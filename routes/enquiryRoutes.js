@@ -1,12 +1,12 @@
 import express from "express";
-import { getEnquiries, getEnquiryById } from "../controllers/enquiryController.js";
+import { getEnquiries, getEnquiryById, createEnquiry} from "../controllers/enquiryController.js";
 
 const router = express.Router();
 
-// ✅ Get all enquiries
+router.post("/enquiries", createEnquiry);
+
 router.get("/enquiries", getEnquiries);
 
-// ✅ Get single enquiry
 router.get("/enquiries/:id", getEnquiryById);
 
 export default router;

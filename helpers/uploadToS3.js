@@ -1,22 +1,22 @@
-const { PutObjectCommand } = require('@aws-sdk/client-s3');
-const s3 = require('../config/s3');
-const { v4: uuidv4 } = require('uuid');
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import s3 from "../config/s3.js";
+import { v4 as uuidv4 } from "uuid";
 
-async function uploadImageToS3(file, folderName = "uploads") {
-    const fileKey = `${folderName}/${uuidv4()}-${file.originalname}`;
+export default async function uploadImageToS3(file, folderName = "uploads") {
+  if (!file) return null;
 
-    const uploadParams = {
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: fileKey,
-        Body: file.buffer,
-        ContentType: file.mimetype
-    };
+  const fileKey = `${folderName}/${uuidv4()}-${file.originalname}`;
 
-    await s3.send(new PutObjectCommand(uploadParams));
+  const uploadParams = {
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: fileKey,
+    Body: file.buffer,
+    ContentType: file.mimetype,
+  };
 
-    const imageUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+  await s3.send(new PutObjectCommand(uploadParams));
 
-    return { fileKey, imageUrl };
+  const imageUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+
+  return { fileKey, imageUrl };
 }
-
-module.exports = uploadImageToS3;

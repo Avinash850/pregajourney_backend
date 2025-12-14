@@ -7,6 +7,10 @@ import blogRoutes from "./routes/blogRoutes.js";
 import blogCategoryRoutes from "./routes/blogCategoryRoutes.js";
 import enquiryRoutes from "./routes/enquiryRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
+import masterRoutes from "./routes/masterRoutes.js";
+import doctorRoutes from "./routes/doctorRoutes.js";
+import hospitalRoutes from "./routes/hospitalRoutes.js";
+import clinicRoutes from "./routes/clinicRoutes.js";
 import cors from 'cors'
 
 dotenv.config();
@@ -25,6 +29,10 @@ app.use("/api", blogRoutes);
 app.use("/api", blogCategoryRoutes);
 app.use("/api", enquiryRoutes);
 app.use("/api", postRoutes);
+app.use("/api", doctorRoutes);
+app.use("/api", hospitalRoutes);
+app.use("/api", clinicRoutes);
+app.use("/api/masters", masterRoutes);
 app.use("/uploads", express.static("uploads"));
 
 app.listen(PORT, () => {

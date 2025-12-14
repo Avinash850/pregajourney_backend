@@ -1225,3 +1225,180 @@ INSERT INTO `pregajourney`.`doctor_hospital` (`doctor_id`, `hospital_id`) VALUES
 
 
 INSERT INTO `pregajourney`.`areas` (`id`, `name`, `city_id`) VALUES ('33', 'Lajpat Nagar', '2');
+
+
+
+
+
+
+
+
+
+CREATE TABLE pregajourney.doctor_specialization (
+    id INT NOT NULL PRIMARY KEY,
+    doctor_id INT NOT NULL,
+    specialization_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+CREATE TABLE pregajourney.doctor_service (
+    id INT NOT NULL PRIMARY KEY,
+    doctor_id INT NOT NULL,
+    service_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+CREATE TABLE pregajourney.doctor_symptom (
+    id INT NOT NULL PRIMARY KEY,
+    doctor_id INT NOT NULL,
+    symptom_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+CREATE TABLE pregajourney.doctor_procedure (
+    id INT NOT NULL PRIMARY KEY,
+    doctor_id INT NOT NULL,
+    procedure_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+CREATE TABLE pregajourney.hospital_specialization (
+    id INT NOT NULL PRIMARY KEY,
+    hospital_id INT NOT NULL,
+    specialization_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+CREATE TABLE pregajourney.hospital_service (
+    id INT NOT NULL PRIMARY KEY,
+    hospital_id INT NOT NULL,
+    service_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+
+CREATE TABLE pregajourney.hospital_symptom (
+    id INT NOT NULL PRIMARY KEY,
+    hospital_id INT NOT NULL,
+    symptom_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+
+CREATE TABLE pregajourney.hospital_procedure (
+    id INT NOT NULL PRIMARY KEY,
+    hospital_id INT NOT NULL,
+    procedure_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+CREATE TABLE pregajourney.clinic_specialization (
+    id INT NOT NULL PRIMARY KEY,
+    clinic_id INT NOT NULL,
+    specialization_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+CREATE TABLE pregajourney.clinic_service (
+    id INT NOT NULL PRIMARY KEY,
+    clinic_id INT NOT NULL,
+    service_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+CREATE TABLE pregajourney.clinic_symptom (
+    id INT NOT NULL PRIMARY KEY,
+    clinic_id INT NOT NULL,
+    symptom_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+CREATE TABLE pregajourney.clinic_procedure (
+    id INT NOT NULL PRIMARY KEY,
+    clinic_id INT NOT NULL,
+    procedure_id INT NOT NULL,
+    created_at VARCHAR(255),
+    created_by VARCHAR(255),
+    updated_at VARCHAR(255),
+    updated_by VARCHAR(255),
+    deleted_at VARCHAR(255),
+    deleted_by VARCHAR(255)
+);
+
+
+ALTER TABLE doctor_specialization MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE doctor_service MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE doctor_symptom MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE doctor_procedure MODIFY id INT NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE hospital_specialization MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE hospital_service MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE hospital_symptom MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE hospital_procedure MODIFY id INT NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE clinic_specialization MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE clinic_service MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE clinic_symptom MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE clinic_procedure MODIFY id INT NOT NULL AUTO_INCREMENT;
