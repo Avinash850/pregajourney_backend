@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import userRoutes from "./routes/userRoutes.js";
 import searchRoutes from "./routes/searchRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
-import blogRoutes from "./routes/blogRoutes.js";
+import publicBlogRoutes from "./routes/publicBlogRoutes.js";
 import blogCategoryRoutes from "./routes/blogCategoryRoutes.js";
 import enquiryRoutes from "./routes/enquiryRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
@@ -25,7 +25,7 @@ app.use(cors())
 app.use("/api/users", userRoutes);
 app.use("/api", searchRoutes);
 app.use("/api", locationRoutes);
-app.use("/api", blogRoutes);
+app.use("/api/public", publicBlogRoutes);
 app.use("/api", blogCategoryRoutes);
 app.use("/api", enquiryRoutes);
 app.use("/api", postRoutes);
