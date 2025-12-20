@@ -186,34 +186,66 @@ export const getHospitalById = async (req, res) => {
 };
 
 
-/**
- * POST /api/hospitals
- * Create hospital with mappings and S3 upload (folder: hospitals)
- */
+
+/* =====================================================
+   SLUG HELPERS (INLINE – NO EXTERNAL FILES)
+   ===================================================== */
+const makeSlug = (text) => {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+
+const getUniqueHospitalSlug = async (connection, baseSlug, excludeId = null) => {
+  let slug = baseSlug;
+  let counter = 1;
+
+  while (true) {
+    const sql = excludeId
+      ? `SELECT id FROM hospitals WHERE slug = ? AND id != ? LIMIT 1`
+      : `SELECT id FROM hospitals WHERE slug = ? LIMIT 1`;
+
+    const params = excludeId ? [slug, excludeId] : [slug];
+    const [[row]] = await connection.query(sql, params);
+
+    if (!row) return slug;
+    slug = `${baseSlug}-${counter++}`;
+  }
+};
+
+/* =====================================================
+   CREATE HOSPITAL (AUTO SLUG – PRACTO STYLE)
+   ===================================================== */
 export const createHospital = async (req, res) => {
   try {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
 
-      // upload image if present
-      const file = req.file;
+      /* ---------- IMAGE ---------- */
       let imageUrl = null;
       let imageKey = null;
-      if (file) {
-        const uploaded = await uploadImageToS3(file, "hospitals");
+
+      if (req.file) {
+        const uploaded = await uploadImageToS3(req.file, "hospitals");
         imageUrl = uploaded.imageUrl;
         imageKey = uploaded.fileKey;
       }
 
       const body = req.body || {};
+
+      /* ---------- AUTO SLUG ---------- */
+      const baseSlug = makeSlug(body.name || "");
+      const slug = await getUniqueHospitalSlug(connection, baseSlug);
+
+      /* ---------- ARRAY NORMALIZER ---------- */
       const normalizeArray = (v) => {
         if (!v) return [];
         if (Array.isArray(v)) return v.map(Number).filter(Boolean);
-        if (typeof v === "string") {
-          if (!v) return [];
+        if (typeof v === "string")
           return v.split(",").map(x => Number(x.trim())).filter(Boolean);
-        }
         return [];
       };
 
@@ -222,18 +254,23 @@ export const createHospital = async (req, res) => {
       const procedures = normalizeArray(body.procedures);
       const symptoms = normalizeArray(body.symptoms);
 
-      const insertSql = `INSERT INTO hospitals
-        (name, slug, timing, short_description, about, image_url, image_key, phone_1, phone_2, website, address, city_id, area_id, status, seo_title, seo_keywords, seo_description)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      /* ---------- INSERT HOSPITAL ---------- */
+      const insertSql = `
+        INSERT INTO hospitals
+        (name, slug, timing, short_description, about, image_url, image_key,
+         phone_1, phone_2, website, address, city_id, area_id, status,
+         seo_title, seo_keywords, seo_description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
 
       const params = [
         body.name || "",
-        body.slug || null,
+        slug,
         body.timing || null,
         body.short_description || null,
         body.about || null,
-        imageUrl || null,
-        imageKey || null,
+        imageUrl,
+        imageKey,
         body.phone_1 || null,
         body.phone_2 || null,
         body.website || null,
@@ -249,11 +286,14 @@ export const createHospital = async (req, res) => {
       const [result] = await connection.query(insertSql, params);
       const hospitalId = result.insertId;
 
+      /* ---------- MAPPING TABLES ---------- */
       const insertMany = async (table, col, ids) => {
-        if (!ids || ids.length === 0) return;
+        if (!ids.length) return;
         const values = ids.map((x) => [hospitalId, x]);
-        const ins = `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`;
-        await connection.query(ins, [values]);
+        await connection.query(
+          `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`,
+          [values]
+        );
       };
 
       await insertMany("hospital_specialization", "specialization_id", specializations);
@@ -262,7 +302,12 @@ export const createHospital = async (req, res) => {
       await insertMany("hospital_symptom", "symptom_id", symptoms);
 
       await connection.commit();
-      res.status(201).json({ id: hospitalId });
+
+      res.status(201).json({
+        id: hospitalId,
+        slug,
+      });
+
     } catch (err) {
       await connection.rollback();
       console.error("❌ createHospital Error:", err);
@@ -276,27 +321,38 @@ export const createHospital = async (req, res) => {
   }
 };
 
-/**
- * PUT /api/hospitals/:id
- * Update hospital; upload new image, update image_url & image_key and delete old file after commit
- */
+/* =====================================================
+   UPDATE HOSPITAL (REGENERATE SLUG IF NAME CHANGES)
+   ===================================================== */
 export const updateHospital = async (req, res) => {
   const { id } = req.params;
+
   try {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
 
-      const [[existing]] = await connection.query(`SELECT id, image_key FROM hospitals WHERE id = ?`, [id]);
+      const [[existing]] = await connection.query(
+        `SELECT id, name, image_key FROM hospitals WHERE id = ?`,
+        [id]
+      );
+
       if (!existing) {
         await connection.rollback();
         return res.status(404).json({ error: "Hospital not found" });
       }
-      const oldKey = existing.image_key;
 
-      // upload new if provided
+      /* ---------- SLUG UPDATE ---------- */
+      let newSlug = null;
+      if (req.body?.name && req.body.name !== existing.name) {
+        const baseSlug = makeSlug(req.body.name);
+        newSlug = await getUniqueHospitalSlug(connection, baseSlug, id);
+      }
+
+      /* ---------- IMAGE UPDATE ---------- */
       let newImageUrl = null;
       let newImageKey = null;
+
       if (req.file) {
         const up = await uploadImageToS3(req.file, "hospitals");
         newImageUrl = up.imageUrl;
@@ -304,28 +360,23 @@ export const updateHospital = async (req, res) => {
       }
 
       const body = req.body || {};
-      const normalizeArray = (v) => {
-        if (!v) return [];
-        if (Array.isArray(v)) return v.map(Number).filter(Boolean);
-        if (typeof v === "string") return v.split(",").map(x => Number(x.trim())).filter(Boolean);
-        return [];
-      };
 
-      const specializations = normalizeArray(body.specializations);
-      const services = normalizeArray(body.services);
-      const procedures = normalizeArray(body.procedures);
-      const symptoms = normalizeArray(body.symptoms);
-
+      /* ---------- UPDATE QUERY ---------- */
       const updateSql = `
         UPDATE hospitals SET
-          name = ?, slug = ?, timing = ?, short_description = ?, about = ?, phone_1 = ?, phone_2 = ?, website = ?, address = ?, city_id = ?, area_id = ?, status = ?, seo_title = ?, seo_keywords = ?, seo_description = ?
+          name = ?,
+          ${newSlug ? "slug = ?," : ""}
+          timing = ?, short_description = ?, about = ?,
+          phone_1 = ?, phone_2 = ?, website = ?, address = ?,
+          city_id = ?, area_id = ?, status = ?,
+          seo_title = ?, seo_keywords = ?, seo_description = ?
           ${newImageUrl ? ", image_url = ?, image_key = ?" : ""}
         WHERE id = ?
       `;
 
-      const baseParams = [
-        body.name || "",
-        body.slug || null,
+      const params = [
+        body.name || existing.name,
+        ...(newSlug ? [newSlug] : []),
         body.timing || null,
         body.short_description || null,
         body.about || null,
@@ -339,33 +390,52 @@ export const updateHospital = async (req, res) => {
         body.seo_title || null,
         body.seo_keywords || null,
         body.seo_description || null,
+        ...(newImageUrl ? [newImageUrl, newImageKey] : []),
+        id,
       ];
 
-      const updateParams = newImageUrl ? [...baseParams, newImageUrl, newImageKey, id] : [...baseParams, id];
-      await connection.query(updateSql, updateParams);
+      await connection.query(updateSql, params);
 
-      // delete + re-insert mapping tables
-      const deleteAndInsert = async (delSql, table, col, ids) => {
-        await connection.query(delSql, [id]);
-        if (!ids || ids.length === 0) return;
-        const values = ids.map((x) => [id, x]);
-        const insSql = `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`;
-        await connection.query(insSql, [values]);
+      /* ---------- MAPPING TABLES ---------- */
+      const normalizeArray = (v) => {
+        if (!v) return [];
+        if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+        if (typeof v === "string")
+          return v.split(",").map(x => Number(x.trim())).filter(Boolean);
+        return [];
       };
 
-      await deleteAndInsert(`DELETE FROM hospital_specialization WHERE hospital_id = ?`, "hospital_specialization", "specialization_id", specializations);
-      await deleteAndInsert(`DELETE FROM hospital_service WHERE hospital_id = ?`, "hospital_service", "service_id", services);
-      await deleteAndInsert(`DELETE FROM hospital_procedure WHERE hospital_id = ?`, "hospital_procedure", "procedure_id", procedures);
-      await deleteAndInsert(`DELETE FROM hospital_symptom WHERE hospital_id = ?`, "hospital_symptom", "symptom_id", symptoms);
+      const specializations = normalizeArray(body.specializations);
+      const services = normalizeArray(body.services);
+      const procedures = normalizeArray(body.procedures);
+      const symptoms = normalizeArray(body.symptoms);
+
+      const deleteAndInsert = async (table, col, ids) => {
+        await connection.query(`DELETE FROM ${table} WHERE hospital_id = ?`, [id]);
+        if (!ids.length) return;
+        const values = ids.map((x) => [id, x]);
+        await connection.query(
+          `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`,
+          [values]
+        );
+      };
+
+      await deleteAndInsert("hospital_specialization", "specialization_id", specializations);
+      await deleteAndInsert("hospital_service", "service_id", services);
+      await deleteAndInsert("hospital_procedure", "procedure_id", procedures);
+      await deleteAndInsert("hospital_symptom", "symptom_id", symptoms);
 
       await connection.commit();
 
-      // delete old image from s3 after commit
-      if (newImageKey && oldKey && oldKey !== newImageKey) {
-        await deleteFromS3(oldKey);
+      if (newImageKey && existing.image_key && existing.image_key !== newImageKey) {
+        await deleteFromS3(existing.image_key);
       }
 
-      res.json({ ok: true });
+      res.json({
+        ok: true,
+        slug: newSlug || undefined,
+      });
+
     } catch (err) {
       await connection.rollback();
       console.error("❌ updateHospital Error:", err);

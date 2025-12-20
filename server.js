@@ -12,6 +12,9 @@ import doctorRoutes from "./routes/doctorRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import clinicRoutes from "./routes/clinicRoutes.js";
 import cors from 'cors'
+// import migrationRoutes from "./controllers/migrations/doctorSlugMigration.js";
+import { migrateDoctorSlugs } from "./controllers/migrations/doctorSlugMigration.js";
+
 
 dotenv.config();
 
@@ -32,6 +35,7 @@ app.use("/api", postRoutes);
 app.use("/api", doctorRoutes);
 app.use("/api", hospitalRoutes);
 app.use("/api", clinicRoutes);
+app.use("/api", migrateDoctorSlugs);
 app.use("/api/masters", masterRoutes);
 app.use("/uploads", express.static("uploads"));
 

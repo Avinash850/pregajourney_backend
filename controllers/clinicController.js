@@ -161,8 +161,13 @@ export const getClinicById = async (req, res) => {
   }
 };
 
+
+
+
+
 /**
  * POST /api/clinics
+ * Practo-style clinic creation (slug auto-generated)
  */
 export const createClinic = async (req, res) => {
   const connection = await pool.getConnection();
@@ -170,18 +175,50 @@ export const createClinic = async (req, res) => {
   try {
     await connection.beginTransaction();
 
+    // -----------------------------
+    // Image upload
+    // -----------------------------
     let imageUrl = null;
     let imageKey = null;
 
     if (req.file) {
-      const up = await uploadImageToS3(req.file, "clinics");
-      imageUrl = up.imageUrl;
-      imageKey = up.fileKey;
+      const uploaded = await uploadImageToS3(req.file, "clinics");
+      imageUrl = uploaded.imageUrl;
+      imageKey = uploaded.fileKey;
     }
 
     const body = req.body || {};
+
+    // -----------------------------
+    // Slug generation (AUTO)
+    // -----------------------------
+    const baseSlug = body.name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-");
+
+    let slug = baseSlug;
+    let counter = 1;
+
+    while (true) {
+      const [[exists]] = await connection.query(
+        `SELECT id FROM clinics WHERE slug = ? LIMIT 1`,
+        [slug]
+      );
+      if (!exists) break;
+      slug = `${baseSlug}-${counter++}`;
+    }
+
+    // -----------------------------
+    // Normalize arrays
+    // -----------------------------
     const normalize = (v) =>
-      !v ? [] : Array.isArray(v) ? v.map(Number) : v.split(",").map(x => Number(x.trim())).filter(Boolean);
+      !v
+        ? []
+        : Array.isArray(v)
+        ? v.map(Number).filter(Boolean)
+        : v.split(",").map(x => Number(x.trim())).filter(Boolean);
 
     const specializations = normalize(body.specializations);
     const services = normalize(body.services);
@@ -189,15 +226,22 @@ export const createClinic = async (req, res) => {
     const symptoms = normalize(body.symptoms);
     const doctors = normalize(body.doctors);
 
+    // -----------------------------
+    // Insert clinic
+    // -----------------------------
     const [result] = await connection.query(
-      `INSERT INTO clinics
-      (name, slug, timing, short_description, about, image_url, image_key,
-       phone_1, phone_2, website, address, city_id, area_id, status,
+      `
+      INSERT INTO clinics
+      (name, slug, timing, short_description, about,
+       image_url, image_key,
+       phone_1, phone_2, website, address,
+       city_id, area_id, status,
        seo_title, seo_keywords, seo_description, json_schema)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
       [
-        body.name,
-        body.slug || null,
+        body.name || "",
+        slug,
         body.timing || null,
         body.short_description || null,
         body.about || null,
@@ -207,8 +251,8 @@ export const createClinic = async (req, res) => {
         body.phone_2 || null,
         body.website || null,
         body.address || null,
-        body.city_id || null,
-        body.area_id || null,
+        body.city_id ? Number(body.city_id) : null,
+        body.area_id ? Number(body.area_id) : null,
         body.status || "active",
         body.seo_title || null,
         body.seo_keywords || null,
@@ -219,6 +263,9 @@ export const createClinic = async (req, res) => {
 
     const clinicId = result.insertId;
 
+    // -----------------------------
+    // Mapping tables
+    // -----------------------------
     const insertMany = async (table, col, ids) => {
       if (!ids.length) return;
       await connection.query(
@@ -234,7 +281,11 @@ export const createClinic = async (req, res) => {
     await insertMany("doctor_clinic", "doctor_id", doctors);
 
     await connection.commit();
-    res.status(201).json({ id: clinicId });
+
+    res.status(201).json({
+      id: clinicId,
+      slug
+    });
 
   } catch (err) {
     await connection.rollback();
@@ -245,8 +296,10 @@ export const createClinic = async (req, res) => {
   }
 };
 
+
 /**
  * PUT /api/clinics/:id
+ * Practo-style clinic update (slug regenerates only if name changes)
  */
 export const updateClinic = async (req, res) => {
   const { id } = req.params;
@@ -256,26 +309,63 @@ export const updateClinic = async (req, res) => {
     await connection.beginTransaction();
 
     const [[existing]] = await connection.query(
-      `SELECT image_key FROM clinics WHERE id = ?`,
+      `SELECT name, image_key FROM clinics WHERE id = ?`,
       [id]
     );
+
     if (!existing) {
       await connection.rollback();
       return res.status(404).json({ error: "Clinic not found" });
     }
 
+    // -----------------------------
+    // Image upload
+    // -----------------------------
     let newImageUrl = null;
     let newImageKey = null;
 
     if (req.file) {
-      const up = await uploadImageToS3(req.file, "clinics");
-      newImageUrl = up.imageUrl;
-      newImageKey = up.fileKey;
+      const uploaded = await uploadImageToS3(req.file, "clinics");
+      newImageUrl = uploaded.imageUrl;
+      newImageKey = uploaded.fileKey;
     }
 
     const body = req.body || {};
+
+    // -----------------------------
+    // Slug regeneration (only if name changed)
+    // -----------------------------
+    let slug = null;
+
+    if (body.name && body.name !== existing.name) {
+      const baseSlug = body.name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-");
+
+      slug = baseSlug;
+      let counter = 1;
+
+      while (true) {
+        const [[exists]] = await connection.query(
+          `SELECT id FROM clinics WHERE slug = ? AND id != ? LIMIT 1`,
+          [slug, id]
+        );
+        if (!exists) break;
+        slug = `${baseSlug}-${counter++}`;
+      }
+    }
+
+    // -----------------------------
+    // Normalize arrays
+    // -----------------------------
     const normalize = (v) =>
-      !v ? [] : Array.isArray(v) ? v.map(Number) : v.split(",").map(x => Number(x.trim())).filter(Boolean);
+      !v
+        ? []
+        : Array.isArray(v)
+        ? v.map(Number).filter(Boolean)
+        : v.split(",").map(x => Number(x.trim())).filter(Boolean);
 
     const specializations = normalize(body.specializations);
     const services = normalize(body.services);
@@ -283,32 +373,47 @@ export const updateClinic = async (req, res) => {
     const symptoms = normalize(body.symptoms);
     const doctors = normalize(body.doctors);
 
+    // -----------------------------
+    // Update clinic
+    // -----------------------------
     await connection.query(
-      `UPDATE clinics SET
-       name=?, slug=?, timing=?, short_description=?, about=?,
-       phone_1=?, phone_2=?, website=?, address=?,
-       city_id=?, area_id=?, status=?,
-       seo_title=?, seo_keywords=?, seo_description=?, json_schema=?
-       ${newImageUrl ? ", image_url=?, image_key=?" : ""}
-       WHERE id=?`,
-      newImageUrl
-        ? [
-            body.name, body.slug, body.timing, body.short_description, body.about,
-            body.phone_1, body.phone_2, body.website, body.address,
-            body.city_id, body.area_id, body.status || "active",
-            body.seo_title, body.seo_keywords, body.seo_description, body.json_schema,
-            newImageUrl, newImageKey, id
-          ]
-        : [
-            body.name, body.slug, body.timing, body.short_description, body.about,
-            body.phone_1, body.phone_2, body.website, body.address,
-            body.city_id, body.area_id, body.status || "active",
-            body.seo_title, body.seo_keywords, body.seo_description, body.json_schema,
-            id
-          ]
+      `
+      UPDATE clinics SET
+        name = ?,
+        ${slug ? "slug = ?," : ""}
+        timing = ?, short_description = ?, about = ?,
+        phone_1 = ?, phone_2 = ?, website = ?, address = ?,
+        city_id = ?, area_id = ?, status = ?,
+        seo_title = ?, seo_keywords = ?, seo_description = ?, json_schema = ?
+        ${newImageUrl ? ", image_url = ?, image_key = ?" : ""}
+      WHERE id = ?
+      `,
+      [
+        body.name || existing.name,
+        ...(slug ? [slug] : []),
+        body.timing || null,
+        body.short_description || null,
+        body.about || null,
+        body.phone_1 || null,
+        body.phone_2 || null,
+        body.website || null,
+        body.address || null,
+        body.city_id ? Number(body.city_id) : null,
+        body.area_id ? Number(body.area_id) : null,
+        body.status || "active",
+        body.seo_title || null,
+        body.seo_keywords || null,
+        body.seo_description || null,
+        body.json_schema || null,
+        ...(newImageUrl ? [newImageUrl, newImageKey] : []),
+        id
+      ]
     );
 
-    const reset = async (table) =>
+    // -----------------------------
+    // Reset mappings
+    // -----------------------------
+    const reset = (table) =>
       connection.query(`DELETE FROM ${table} WHERE clinic_id = ?`, [id]);
 
     await reset("clinic_specialization");
@@ -337,7 +442,10 @@ export const updateClinic = async (req, res) => {
       await deleteFromS3(existing.image_key);
     }
 
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      slug: slug || undefined
+    });
 
   } catch (err) {
     await connection.rollback();
