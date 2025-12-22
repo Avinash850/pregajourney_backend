@@ -115,3 +115,72 @@ export const getBlogDetail = async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 };
+
+
+export const getRelatedBlogs = async (req, res) => {
+    try {
+        const categorySlug = req.query.category || null;
+        const excludeSlug = req.query.exclude || null;
+        const limit = parseInt(req.query.limit) || 4;
+
+        let blogs = [];
+
+        // 1️⃣ Same category blogs
+        if (categorySlug) {
+            const [categoryBlogs] = await pool.query(
+                `
+                SELECT DISTINCT
+                    p.id,
+                    p.name,
+                    p.slug,
+                    p.short_description,
+                    p.image_url,
+                    p.created_at
+                FROM posts p
+                LEFT JOIN post_categories pc ON pc.post_id = p.id
+                LEFT JOIN blog_categories c ON c.id = pc.category_id
+                WHERE p.status = 'active'
+                  AND c.slug = ?
+                  AND p.slug != ?
+                ORDER BY p.created_at DESC
+                LIMIT ?
+                `,
+                [categorySlug, excludeSlug, limit]
+            );
+
+            blogs = categoryBlogs;
+        }
+
+        // 2️⃣ Fallback to latest blogs
+        if (blogs.length < limit) {
+            const remaining = limit - blogs.length;
+            const existingIds = blogs.map(b => b.id);
+
+            const [latestBlogs] = await pool.query(
+                `
+                SELECT
+                    p.id,
+                    p.name,
+                    p.slug,
+                    p.short_description,
+                    p.image_url,
+                    p.created_at
+                FROM posts p
+                WHERE p.status = 'active'
+                  AND p.slug != ?
+                  ${existingIds.length ? `AND p.id NOT IN (${existingIds.map(() => '?').join(",")})` : ""}
+                ORDER BY p.created_at DESC
+                LIMIT ?
+                `,
+                [...existingIds, excludeSlug, remaining].filter(Boolean)
+            );
+
+            blogs = [...blogs, ...latestBlogs];
+        }
+
+        res.json(blogs);
+    } catch (error) {
+        console.error("❌ getRelatedBlogs Error:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+};

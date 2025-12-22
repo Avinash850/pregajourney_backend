@@ -116,501 +116,1622 @@ export const search = async (req, res) => {
 
 
 
+
+const sendResponse = (res, body) => {
+  return res.json({
+    payload: body,   // 👈 EXACT SAME body as before
+    context: {
+      source: "search",
+      ts: Date.now(),
+    },
+  });
+};
+
+
+
 export const suggest = async (req, res) => {
   try {
-    let { q, location } = req.query;
+    const { q } = req.query;
 
-    // Normalize inputs
-    const isEmptyQuery = !q || q.trim().length === 0 || q.toLowerCase() === "null";
-    const isEmptyLocation = !location || location.trim().length === 0 || location.toLowerCase() === "null";
-
-    // Normalize search text: "Dr. a" → "%dr%a%"
-    let normalizedSearch = "";
-    if (!isEmptyQuery) {
-      normalizedSearch = `%${q.toLowerCase().replace(/[\s.]+/g, "%")}%`;
+    if (!q || q.trim().length < 2) {
+      return res.json([]);
     }
 
-    // Convert comma-separated location IDs to array
-    let locationIds = [];
-    if (!isEmptyLocation) {
-      const parts = location.split(",").map(l => l.trim());
-      const ids = parts.filter(p => /^\d+$/.test(p));
-      const texts = parts.filter(p => !/^\d+$/.test(p));
+    const keyword = q.toLowerCase().trim();
 
-      if (ids.length) locationIds.push(...ids);
+    const tokens = keyword.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return res.json([]);
 
-      for (const text of texts) {
-        const likeText = `%${text.toLowerCase().replace(/[\s.]+/g, "%")}%`;
+    const buildWhereClause = (field) =>
+      tokens.map(() => `LOWER(${field}) LIKE ?`).join(" AND ");
 
-        // Areas by city
-        const areasByCity = await pool.query(
-          `SELECT a.id FROM areas a
-           JOIN cities c ON a.city_id = c.id
-           WHERE LOWER(REPLACE(c.name, ' ', '')) LIKE ?`,
-          [likeText]
-        );
-        locationIds.push(...areasByCity[0].map(r => r.id));
+    const searchValues = tokens.map((t) => `%${t}%`);
 
-        // Areas by state
-        const areasByState = await pool.query(
-          `SELECT a.id FROM areas a
-           JOIN cities c ON a.city_id = c.id
-           JOIN states s ON c.state_id = s.id
-           WHERE LOWER(REPLACE(s.name, ' ', '')) LIKE ?`,
-          [likeText]
-        );
-        locationIds.push(...areasByState[0].map(r => r.id));
-      }
-    }
-
-    // Remove duplicates
-    locationIds = [...new Set(locationIds)];
-
-    // Safe query helper
-    const safeQuery = async (query, params = []) => {
+    const safe = async (sql, params = []) => {
       try {
-        const [rows] = await pool.query(query, params);
+        const [rows] = await pool.query(sql, params);
         return rows;
       } catch (err) {
-        console.warn("⚠️ Skipped query:", query.split("FROM")[0].trim(), "-", err.message);
+        console.error("❌ SQL error:", err.sqlMessage);
         return [];
       }
     };
 
-    // Build WHERE clause per table
-    const buildQuery = (table, type, hasArea = false) => {
-      const whereClauses = [];
-      const params = [];
+    /* ===================== INTENT SUGGESTIONS (NEW) ===================== */
+    const intents = [];
 
-      // --- New Feature: handle "doctor"/"doctors" keyword ---
-      if (!isEmptyQuery) {
-        const qLower = q.toLowerCase().trim();
+    if ("doctor".startsWith(keyword)) {
+      intents.push({
+        type: "intent",
+        intent: "doctor",
+        name: "Doctors",
+        slug: "doctors",
+      });
+    }
 
-        if (type === "doctor" && (qLower === "doctor" || qLower === "doctors")) {
-          // ✅ Skip adding name filter → show all doctors
-          // (location filter will still apply below if provided)
-        } else {
-          // Normal LIKE search for all other queries
-          whereClauses.push(`LOWER(name) LIKE ?`);
-          params.push(normalizedSearch);
-        }
-      }
+    if ("hospital".startsWith(keyword)) {
+      intents.push({
+        type: "intent",
+        intent: "hospital",
+        name: "Hospitals",
+        slug: "hospitals",
+      });
+    }
 
-      // Apply location filter if available
-      if (hasArea && locationIds.length > 0) {
-        whereClauses.push(`area_id IN (${locationIds.map(() => "?").join(",")})`);
-        params.push(...locationIds);
-      }
+    if ("clinic".startsWith(keyword)) {
+      intents.push({
+        type: "intent",
+        intent: "clinic",
+        name: "Clinics",
+        slug: "clinics",
+      });
+    }
 
-      // Combine WHERE parts
-      const where = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
-      // For "doctor"/"doctors" → return more doctors (limit 20)
-      const limit =
-        type === "doctor" &&
-        !isEmptyQuery &&
-        (q.toLowerCase().trim() === "doctor" || q.toLowerCase().trim() === "doctors")
-          ? 20
-          : 5;
-
-      return { sql: `SELECT id, name, '${type}' AS type FROM ${table} ${where} LIMIT ${limit}`, params };
-    };
-
-    // Table configurations
-    const tableConfigs = [
-      { table: "doctors", type: "doctor", hasArea: true },
-      { table: "hospitals", type: "hospital", hasArea: true },
-      { table: "clinics", type: "clinic", hasArea: true },
-      { table: "specializations", type: "specialization", hasArea: false },
-      { table: "services", type: "service", hasArea: false },
-      { table: "procedures", type: "procedure", hasArea: false },
-      { table: "symptoms", type: "symptom", hasArea: false },
-    ];
-
-    // Run table queries
-    const queries = tableConfigs.map(cfg => {
-      const { sql, params } = buildQuery(cfg.table, cfg.type, cfg.hasArea);
-      return safeQuery(sql, params);
-    });
-
-    // Area query (same as before)
-    const areaQuery = isEmptyQuery
-      ? `
-        SELECT DISTINCT SUBSTRING_INDEX(address, ',', 1) AS name, 'area' AS type
-        FROM (
-          SELECT address FROM doctors
-          UNION ALL SELECT address FROM hospitals
-          UNION ALL SELECT address FROM clinics
-        ) AS combined
-        WHERE address IS NOT NULL
-        LIMIT 5
-      `
-      : `
-        SELECT DISTINCT SUBSTRING_INDEX(address, ',', 1) AS name, 'area' AS type
-        FROM (
-          SELECT address FROM doctors WHERE address LIKE ?
-          UNION ALL SELECT address FROM hospitals WHERE address LIKE ?
-          UNION ALL SELECT address FROM clinics WHERE address LIKE ?
-        ) AS combined
-        WHERE address IS NOT NULL
-        LIMIT 5
-      `;
-    const areaParams = isEmptyQuery ? [] : [normalizedSearch, normalizedSearch, normalizedSearch];
-    const areaPromise = safeQuery(areaQuery, areaParams);
-
-    // Execute all queries in parallel
+    /* ===================== ENTITY SEARCH ===================== */
     const [
       doctors,
       hospitals,
       clinics,
       specializations,
       services,
-      procedures,
       symptoms,
-      areas,
-    ] = await Promise.all([...queries, areaPromise]);
+    ] = await Promise.all([
+      safe(
+        `SELECT name, slug, 'doctor' AS type
+         FROM doctors
+         WHERE ${buildWhereClause("name")}
+         LIMIT 5`,
+        searchValues
+      ),
+      safe(
+        `SELECT name, slug, 'hospital' AS type
+         FROM hospitals
+         WHERE ${buildWhereClause("name")}
+         LIMIT 5`,
+        searchValues
+      ),
+      safe(
+        `SELECT name, slug, 'clinic' AS type
+         FROM clinics
+         WHERE ${buildWhereClause("name")}
+         LIMIT 5`,
+        searchValues
+      ),
+      safe(
+        `SELECT name, slug, 'specialization' AS type
+         FROM specializations
+         WHERE ${buildWhereClause("name")}
+         LIMIT 5`,
+        searchValues
+      ),
+      safe(
+        `SELECT name, slug, 'service' AS type
+         FROM services
+         WHERE ${buildWhereClause("name")}
+         LIMIT 5`,
+        searchValues
+      ),
+      safe(
+        `SELECT name, slug, 'symptom' AS type
+         FROM symptoms
+         WHERE ${buildWhereClause("name")}
+         LIMIT 5`,
+        searchValues
+      ),
+    ]);
 
-    // Send response
-    res.json({
-      doctors,
-      hospitals,
-      clinics,
-      specializations,
-      services,
-      procedures,
-      symptoms,
-      areas,
-    });
+    const result = [
+      ...intents,
+      ...specializations,
+      ...services,
+      ...symptoms,
+      ...doctors,
+      ...clinics,
+      ...hospitals,
+    ];
 
-  } catch (error) {
-    console.error("❌ Suggestion error:", error);
+    res.json(result);
+  } catch (err) {
+    console.error("❌ suggest error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
 
+// export const getSearchDetails = async (req, res) => {
+//   try {
+//     const {
+//       type,
+//       slug,
+//       city,
+//       area,
+//       limit = 20,
+//       profile = "false",
+//     } = req.query;
 
-export const getSearchDetails = async (req, res) => {
-  console.log("Incoming params =>", req.query);
+//     console.log("🔥 SEARCH DETAILS HIT", { query: req.query });
 
-  const TABS = [
-    { title: "Info", key: "info" },
-    // { title: "Stories(23)", key: "stories" },
-    // { title: "Consult Q&A", key: "consult" },
-    // { title: "Healthfeed", key: "healthfeed" }
-  ];
+//     if (!type) {
+//       return res.status(400).json({ error: "type is required" });
+//     }
 
-  const sendResponse = (type, items = [], related = {}, forceSingle = null) => {
-    const count = Array.isArray(items) ? items.length : 0;
-    return res.json({
-      type,
-      items,
-      related,
-      meta: {
-        single: forceSingle !== null ? forceSingle : count === 1,
-        count
-      }
-    });
-  };
+//     const isProfile = profile === "true";
+//     const params = [];
 
+//     /* =====================================================
+//        1️⃣ LOCATION RESOLUTION
+//     ===================================================== */
+//     let cityId = null;
+//     let areaId = null;
+
+//     if (city) {
+//       const [cityRows] = await pool.query(
+//         `SELECT id FROM cities WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [city]
+//       );
+//       cityId = cityRows?.[0]?.id || null;
+//     }
+
+//     if (area) {
+//       const [areaRows] = await pool.query(
+//         `SELECT id FROM areas WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [area]
+//       );
+//       areaId = areaRows?.[0]?.id || null;
+//     }
+
+//     /* =====================================================
+//        2️⃣ PROFILE FETCH (DOCTOR / HOSPITAL / CLINIC)
+//     ===================================================== */
+//     if (isProfile && slug && ["doctor", "hospital", "clinic"].includes(type)) {
+//       const table = `${type}s`;
+
+//       // 🔐 SLUG → ID
+//       const [idRows] = await pool.query(
+//         `SELECT id FROM ${table} WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [slug]
+//       );
+
+//       const idRow = idRows?.[0];
+//       if (!idRow) {
+//         // return res.json({
+//         //   type,
+//         //   items: [],
+//         //   meta: { single: true, count: 0 },
+//         // });
+//         return sendResponse(res, {
+//           type,
+//           items: [],
+//           meta: { single: false, count: 0 },
+//         });
+
+//       }
+
+//       let specializationJoin = "";
+//       if (type === "doctor") {
+//         specializationJoin = `
+//           LEFT JOIN doctor_specialization ds 
+//             ON ds.doctor_id = t.id AND ds.is_primary = 1
+//           LEFT JOIN specializations sp 
+//             ON sp.id = ds.specialization_id
+//         `;
+//       } else if (type === "hospital") {
+//         specializationJoin = `
+//           LEFT JOIN hospital_specialization hs 
+//             ON hs.hospital_id = t.id AND hs.is_primary = 1
+//           LEFT JOIN specializations sp 
+//             ON sp.id = hs.specialization_id
+//         `;
+//       } else if (type === "clinic") {
+//         specializationJoin = `
+//           LEFT JOIN clinic_specialization cs 
+//             ON cs.clinic_id = t.id AND cs.is_primary = 1
+//           LEFT JOIN specializations sp 
+//             ON sp.id = cs.specialization_id
+//         `;
+//       }
+
+//       const [profileRows] = await pool.query(
+//         `
+//         SELECT 
+//           t.*,
+//           a.name AS area_name,
+//           c.name AS city_name,
+//           s.name AS state_name,
+//           sp.name AS specialization_name
+//         FROM ${table} t
+//         LEFT JOIN areas a ON a.id = t.area_id
+//         LEFT JOIN cities c ON c.id = t.city_id
+//         LEFT JOIN states s ON s.id = c.state_id
+//         ${specializationJoin}
+//         WHERE t.id = ?
+//         LIMIT 1
+//         `,
+//         [idRow.id]
+//       );
+
+//       if (!profileRows.length) {
+//         // return res.json({
+//         //   type,
+//         //   items: [],
+//         //   meta: { single: true, count: 0 },
+//         // });
+//         return sendResponse(res, {
+//           type,
+//           items: [],
+//           meta: { single: true, count: 0 },
+//         });
+
+//       }
+
+//       const item = profileRows[0];
+
+//       /* =====================================================
+//          3️⃣ DOCTOR → HOSPITAL / CLINIC
+//       ===================================================== */
+//       if (type === "doctor") {
+//         const [clinicRows] = await pool.query(
+//           `
+//           SELECT cl.*, dc.consultation_fee, dc.timings, dc.is_primary
+//           FROM doctor_clinic dc
+//           JOIN clinics cl ON cl.id = dc.clinic_id
+//           WHERE dc.doctor_id = ?
+//           ORDER BY dc.is_primary DESC
+//           `,
+//           [item.id]
+//         );
+
+//         const [hospitalRows] = await pool.query(
+//           `
+//           SELECT h.*, dh.consultation_fee, dh.timings, dh.is_primary
+//           FROM doctor_hospital dh
+//           JOIN hospitals h ON h.id = dh.hospital_id
+//           WHERE dh.doctor_id = ?
+//           ORDER BY dh.is_primary DESC
+//           `,
+//           [item.id]
+//         );
+
+//         item.clinics = clinicRows;
+//         item.hospitals = hospitalRows;
+//       }
+
+//       /* =====================================================
+//          4️⃣ HOSPITAL → DOCTORS
+//       ===================================================== */
+//       if (type === "hospital") {
+//         const [doctorRows] = await pool.query(
+//           `
+//           SELECT 
+//             d.*,
+//             dh.consultation_fee,
+//             dh.timings,
+//             dh.is_primary,
+//             a.name AS area_name,
+//             c.name AS city_name,
+//             s.name AS state_name
+//           FROM doctor_hospital dh
+//           JOIN doctors d ON d.id = dh.doctor_id
+//           LEFT JOIN areas a ON a.id = d.area_id
+//           LEFT JOIN cities c ON c.id = d.city_id
+//           LEFT JOIN states s ON s.id = c.state_id
+//           WHERE dh.hospital_id = ?
+//           ORDER BY dh.is_primary DESC, d.name ASC
+//           `,
+//           [item.id]
+//         );
+
+//         item.doctors = doctorRows;
+//       }
+
+//       /* =====================================================
+//          5️⃣ CLINIC → DOCTORS
+//       ===================================================== */
+//       if (type === "clinic") {
+//         const [doctorRows] = await pool.query(
+//           `
+//           SELECT 
+//             d.*,
+//             dc.consultation_fee,
+//             dc.timings,
+//             dc.is_primary,
+//             a.name AS area_name,
+//             c.name AS city_name,
+//             s.name AS state_name
+//           FROM doctor_clinic dc
+//           JOIN doctors d ON d.id = dc.doctor_id
+//           LEFT JOIN areas a ON a.id = d.area_id
+//           LEFT JOIN cities c ON c.id = d.city_id
+//           LEFT JOIN states s ON s.id = c.state_id
+//           WHERE dc.clinic_id = ?
+//           ORDER BY dc.is_primary DESC, d.name ASC
+//           `,
+//           [item.id]
+//         );
+
+//         item.doctors = doctorRows;
+//       }
+
+//       // return res.json({
+//       //   type,
+//       //   items: [item],
+//       //   meta: { single: true, count: 1 },
+//       // });
+//       return sendResponse(res, {
+//         type,
+//         items: [item],
+//         meta: { single: true, count: 1 },
+//       });
+
+//     }
+
+//     /* =====================================================
+//        6️⃣ LIST MODE (DOCTOR / HOSPITAL / CLINIC)
+//     ===================================================== */
+//     if (["doctor", "hospital", "clinic"].includes(type)) {
+//       const table = `${type}s`;
+//       let where = "WHERE 1=1";
+
+//       if (cityId) {
+//         where += " AND t.city_id = ?";
+//         params.push(cityId);
+//       }
+
+//       if (areaId) {
+//         where += " AND t.area_id = ?";
+//         params.push(areaId);
+//       }
+
+//       const [listRows] = await pool.query(
+//         `
+//         SELECT 
+//           t.*,
+//           a.name AS area_name,
+//           c.name AS city_name,
+//           s.name AS state_name
+//         FROM ${table} t
+//         LEFT JOIN areas a ON a.id = t.area_id
+//         LEFT JOIN cities c ON c.id = t.city_id
+//         LEFT JOIN states s ON s.id = c.state_id
+//         ${where}
+//         ORDER BY t.name ASC
+//         LIMIT ?
+//         `,
+//         [...params, Number(limit)]
+//       );
+
+//       // return res.json({
+//       //   type,
+//       //   items: listRows,
+//       //   meta: { single: false, count: listRows.length },
+//       // });
+//       return sendResponse(res, {
+//         type,
+//         items: listRows,
+//         meta: { single: false, count: listRows.length },
+//       });
+
+//     }
+
+//     return res.status(400).json({ error: "Invalid type" });
+//   } catch (error) {
+//     console.error("❌ getSearchDetails error:", error);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// };
+
+
+
+// export const getSearchDetails = async (req, res) => {
+//   try {
+//     const {
+//       type,
+//       slug,
+//       city,
+//       area,
+//       limit = 20,
+//       profile = "false",
+//     } = req.query;
+
+//     console.log("🔥 SEARCH DETAILS HIT", { query: req.query });
+
+//     if (!type) {
+//       return res.status(400).json({ error: "type is required" });
+//     }
+
+//     const isProfile = profile === "true";
+//     const params = [];
+
+//     /* =====================================================
+//        1️⃣ LOCATION RESOLUTION
+//     ===================================================== */
+//     let cityId = null;
+//     let areaId = null;
+
+//     if (city) {
+//       const [cityRows] = await pool.query(
+//         `SELECT id FROM cities WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [city]
+//       );
+//       cityId = cityRows?.[0]?.id || null;
+//     }
+
+//     if (area) {
+//       const [areaRows] = await pool.query(
+//         `SELECT id FROM areas WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [area]
+//       );
+//       areaId = areaRows?.[0]?.id || null;
+//     }
+
+//     /* =====================================================
+//        2️⃣ PROFILE FETCH (DOCTOR / HOSPITAL / CLINIC)
+//     ===================================================== */
+//     if (isProfile && slug && ["doctor", "hospital", "clinic"].includes(type)) {
+//       const table = `${type}s`;
+
+//       // 🔐 SLUG → ID
+//       const [idRows] = await pool.query(
+//         `SELECT id FROM ${table} WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [slug]
+//       );
+
+//       const idRow = idRows?.[0];
+//       if (!idRow) {
+//         return res.json({
+//           type,
+//           items: [],
+//           meta: { single: true, count: 0 },
+//         });
+//       }
+
+//       let specializationJoin = "";
+//       if (type === "doctor") {
+//         specializationJoin = `
+//           LEFT JOIN doctor_specialization ds 
+//             ON ds.doctor_id = t.id AND ds.is_primary = 1
+//           LEFT JOIN specializations sp 
+//             ON sp.id = ds.specialization_id
+//         `;
+//       } else if (type === "hospital") {
+//         specializationJoin = `
+//           LEFT JOIN hospital_specialization hs 
+//             ON hs.hospital_id = t.id AND hs.is_primary = 1
+//           LEFT JOIN specializations sp 
+//             ON sp.id = hs.specialization_id
+//         `;
+//       } else if (type === "clinic") {
+//         specializationJoin = `
+//           LEFT JOIN clinic_specialization cs 
+//             ON cs.clinic_id = t.id AND cs.is_primary = 1
+//           LEFT JOIN specializations sp 
+//             ON sp.id = cs.specialization_id
+//         `;
+//       }
+
+//       const [profileRows] = await pool.query(
+//         `
+//         SELECT 
+//           t.*,
+//           a.name AS area_name,
+//           c.name AS city_name,
+//           s.name AS state_name,
+//           sp.name AS specialization_name
+//         FROM ${table} t
+//         LEFT JOIN areas a ON a.id = t.area_id
+//         LEFT JOIN cities c ON c.id = t.city_id
+//         LEFT JOIN states s ON s.id = c.state_id
+//         ${specializationJoin}
+//         WHERE t.id = ?
+//         LIMIT 1
+//         `,
+//         [idRow.id]
+//       );
+
+//       if (!profileRows.length) {
+//         return res.json({
+//           type,
+//           items: [],
+//           meta: { single: true, count: 0 },
+//         });
+//       }
+
+//       const item = profileRows[0];
+
+//       /* =====================================================
+//          3️⃣ DOCTOR → HOSPITAL / CLINIC
+//       ===================================================== */
+//       if (type === "doctor") {
+//         const [clinicRows] = await pool.query(
+//           `
+//           SELECT cl.*, dc.consultation_fee, dc.timings, dc.is_primary
+//           FROM doctor_clinic dc
+//           JOIN clinics cl ON cl.id = dc.clinic_id
+//           WHERE dc.doctor_id = ?
+//           ORDER BY dc.is_primary DESC
+//           `,
+//           [item.id]
+//         );
+
+//         const [hospitalRows] = await pool.query(
+//           `
+//           SELECT h.*, dh.consultation_fee, dh.timings, dh.is_primary
+//           FROM doctor_hospital dh
+//           JOIN hospitals h ON h.id = dh.hospital_id
+//           WHERE dh.doctor_id = ?
+//           ORDER BY dh.is_primary DESC
+//           `,
+//           [item.id]
+//         );
+
+//         item.clinics = clinicRows;
+//         item.hospitals = hospitalRows;
+//       }
+
+//       /* =====================================================
+//          4️⃣ HOSPITAL → DOCTORS
+//       ===================================================== */
+//       if (type === "hospital") {
+//         const [doctorRows] = await pool.query(
+//           `
+//           SELECT 
+//             d.*,
+//             dh.consultation_fee,
+//             dh.timings,
+//             dh.is_primary,
+//             a.name AS area_name,
+//             c.name AS city_name,
+//             s.name AS state_name
+//           FROM doctor_hospital dh
+//           JOIN doctors d ON d.id = dh.doctor_id
+//           LEFT JOIN areas a ON a.id = d.area_id
+//           LEFT JOIN cities c ON c.id = d.city_id
+//           LEFT JOIN states s ON s.id = c.state_id
+//           WHERE dh.hospital_id = ?
+//           ORDER BY dh.is_primary DESC, d.name ASC
+//           `,
+//           [item.id]
+//         );
+
+//         item.doctors = doctorRows;
+//       }
+
+//       /* =====================================================
+//          5️⃣ CLINIC → DOCTORS
+//       ===================================================== */
+//       if (type === "clinic") {
+//         const [doctorRows] = await pool.query(
+//           `
+//           SELECT 
+//             d.*,
+//             dc.consultation_fee,
+//             dc.timings,
+//             dc.is_primary,
+//             a.name AS area_name,
+//             c.name AS city_name,
+//             s.name AS state_name
+//           FROM doctor_clinic dc
+//           JOIN doctors d ON d.id = dc.doctor_id
+//           LEFT JOIN areas a ON a.id = d.area_id
+//           LEFT JOIN cities c ON c.id = d.city_id
+//           LEFT JOIN states s ON s.id = c.state_id
+//           WHERE dc.clinic_id = ?
+//           ORDER BY dc.is_primary DESC, d.name ASC
+//           `,
+//           [item.id]
+//         );
+
+//         item.doctors = doctorRows;
+//       }
+
+//       return res.json({
+//         type,
+//         items: [item],
+//         meta: { single: true, count: 1 },
+//       });
+//     }
+
+//     /* =====================================================
+//        6️⃣ LIST MODE (DOCTOR / HOSPITAL / CLINIC)
+//     ===================================================== */
+//     if (["doctor", "hospital", "clinic"].includes(type)) {
+//       const table = `${type}s`;
+//       let where = "WHERE 1=1";
+
+//       if (cityId) {
+//         where += " AND t.city_id = ?";
+//         params.push(cityId);
+//       }
+
+//       if (areaId) {
+//         where += " AND t.area_id = ?";
+//         params.push(areaId);
+//       }
+
+//       const [listRows] = await pool.query(
+//         `
+//         SELECT 
+//           t.*,
+//           a.name AS area_name,
+//           c.name AS city_name,
+//           s.name AS state_name
+//         FROM ${table} t
+//         LEFT JOIN areas a ON a.id = t.area_id
+//         LEFT JOIN cities c ON c.id = t.city_id
+//         LEFT JOIN states s ON s.id = c.state_id
+//         ${where}
+//         ORDER BY t.name ASC
+//         LIMIT ?
+//         `,
+//         [...params, Number(limit)]
+//       );
+
+//       return res.json({
+//         type,
+//         items: listRows,
+//         meta: { single: false, count: listRows.length },
+//       });
+//     }
+
+//     return res.status(400).json({ error: "Invalid type" });
+//   } catch (error) {
+//     console.error("❌ getSearchDetails error:", error);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// };
+
+
+// export const getSearchDetails = async (req, res) => {
+//   try {
+//     const {
+//       type,
+//       slug,
+//       city,
+//       area,
+//       limit = 20,
+//       profile = "false",
+//     } = req.query;
+
+//     console.log("🔥 SEARCH DETAILS HIT", { query: req.query });
+
+//     if (!type) {
+//       return res.status(400).json({ error: "type is required" });
+//     }
+
+//     const isProfile = profile === "true";
+//     const params = [];
+
+//     /* =====================================================
+//        1️⃣ LOCATION RESOLUTION
+//     ===================================================== */
+//     let cityId = null;
+//     let areaId = null;
+
+//     if (city) {
+//       const [cityRows] = await pool.query(
+//         `SELECT id FROM cities WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [city]
+//       );
+//       cityId = cityRows?.[0]?.id || null;
+//     }
+
+//     if (area) {
+//       const [areaRows] = await pool.query(
+//         `SELECT id FROM areas WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [area]
+//       );
+//       areaId = areaRows?.[0]?.id || null;
+//     }
+
+//     /* =====================================================
+//        2️⃣ PROFILE FETCH
+//     ===================================================== */
+//     if (isProfile && slug && ["doctor", "hospital", "clinic"].includes(type)) {
+//       const table = `${type}s`;
+
+//       const [idRows] = await pool.query(
+//         `SELECT id FROM ${table} WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+//         [slug]
+//       );
+
+//       const idRow = idRows?.[0];
+//       if (!idRow) {
+//         return res.json(
+//           buildResponse({
+//             type,
+//             items: [],
+//             meta: { single: true, count: 0 },
+//           })
+//         );
+//       }
+
+//       const [profileRows] = await pool.query(
+//         `
+//         SELECT 
+//           t.*,
+//           a.name AS area_name,
+//           c.name AS city_name,
+//           s.name AS state_name
+//         FROM ${table} t
+//         LEFT JOIN areas a ON a.id = t.area_id
+//         LEFT JOIN cities c ON c.id = t.city_id
+//         LEFT JOIN states s ON s.id = c.state_id
+//         WHERE t.id = ?
+//         LIMIT 1
+//         `,
+//         [idRow.id]
+//       );
+
+//       if (!profileRows.length) {
+//         return res.json(
+//           buildResponse({
+//             type,
+//             items: [],
+//             meta: { single: true, count: 0 },
+//           })
+//         );
+//       }
+
+//       return res.json(
+//         buildResponse({
+//           type,
+//           items: [profileRows[0]],
+//           meta: { single: true, count: 1 },
+//         })
+//       );
+//     }
+
+//     /* =====================================================
+//        3️⃣ LIST MODE (NO SCROLL, NO INTENT)
+//     ===================================================== */
+//     if (["doctor", "hospital", "clinic"].includes(type)) {
+//       const table = `${type}s`;
+//       let where = "WHERE 1=1";
+
+//       if (cityId) {
+//         where += " AND t.city_id = ?";
+//         params.push(cityId);
+//       }
+
+//       if (areaId) {
+//         where += " AND t.area_id = ?";
+//         params.push(areaId);
+//       }
+
+//       const [listRows] = await pool.query(
+//         `
+//         SELECT 
+//           t.*,
+//           a.name AS area_name,
+//           c.name AS city_name,
+//           s.name AS state_name
+//         FROM ${table} t
+//         LEFT JOIN areas a ON a.id = t.area_id
+//         LEFT JOIN cities c ON c.id = t.city_id
+//         LEFT JOIN states s ON s.id = c.state_id
+//         ${where}
+//         ORDER BY t.name ASC
+//         LIMIT ?
+//         `,
+//         [...params, Number(limit)]
+//       );
+
+//       return res.json(
+//         buildResponse({
+//           type,
+//           items: listRows,
+//           meta: { single: false, count: listRows.length },
+//         })
+//       );
+//     }
+
+//     return res.status(400).json({ error: "Invalid type" });
+//   } catch (error) {
+//     console.error("❌ getSearchDetails error:", error);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// };
+
+
+
+const encodeCursor = (obj) =>
+  Buffer.from(JSON.stringify(obj)).toString("base64");
+
+const decodeCursor = (cursor) => {
   try {
-    let { id, type, location, limit, all } = req.query;
+    return JSON.parse(Buffer.from(cursor, "base64").toString());
+  } catch {
+    return null;
+  }
+};
 
-    if (!type) return res.status(400).json({ error: "type is required" });
-    type = type.toLowerCase();
 
-    id = id && id.toString().trim() ? id.toString().trim() : null;
 
-    const DEFAULT_LIMIT = 1000;
-    limit = all === "true" ? null : parseInt(limit, 10) || DEFAULT_LIMIT;
 
-    const tableMap = {
-      doctor: "doctors",
-      hospital: "hospitals",
-      clinic: "clinics",
-      specialization: "specializations",
-      service: "services",
-      procedure: "procedures",
-      symptom: "symptoms",
-    };
+export const searchByIntent = async (req, res) => {
+  try {
+    const { q, city, area, limit = 20 } = req.query;
 
-    const tableName = tableMap[type];
-    if (!tableName) return res.status(400).json({ error: "Invalid type" });
+    if (!q) {
+      return res.status(400).json({ error: "q (keyword) is required" });
+    }
 
-    const locationJoin = (alias) => `
-      LEFT JOIN areas a ON a.id = ${alias}.area_id
-      LEFT JOIN cities c ON c.id = ${alias}.city_id
-      LEFT JOIN states s ON s.id = c.state_id
-    `;
-
-    const specializationJoin = (entity, alias) => `
-      LEFT JOIN ${entity}_specialization ms
-        ON ms.id = (
-          SELECT id FROM ${entity}_specialization
-          WHERE ${entity}_id = ${alias}.id
-          ORDER BY id DESC
-          LIMIT 1
-        )
-      LEFT JOIN specializations sp ON sp.id = ms.specialization_id
-    `;
+    const keyword = q.trim().toLowerCase();
+    const normalizedName = keyword.replace(/-/g, " ");
+    const params = [];
 
     /* =====================================================
-       MAIN TYPE + ID (doctor / hospital / clinic)
-       ===================================================== */
-    if (id && ["doctor", "hospital", "clinic"].includes(type)) {
-      const alias = "t";
+       1️⃣ LOCATION RESOLUTION
+    ===================================================== */
+    let cityId = null;
+    let areaId = null;
 
-      const [rows] = await pool.query(`
-        SELECT ${alias}.*,
-               a.name AS area_name,
-               c.name AS city_name,
-               s.name AS state_name,
-               sp.id AS specialization_id,
-               sp.name AS specialization_name
-        FROM ${tableName} ${alias}
-        ${locationJoin(alias)}
-        ${specializationJoin(type, alias)}
-        WHERE ${alias}.id = ?
-        LIMIT 1
-      `, [id]);
+    if (city) {
+      const [[c]] = await pool.query(
+        `SELECT id FROM cities WHERE LOWER(slug) = LOWER(?) OR LOWER(name) = LOWER(?) LIMIT 1`,
+        [city, city]
+      );
+      cityId = c?.id || null;
+    }
 
-      if (!rows.length) {
-        return sendResponse(type, [], {}, true);
-      }
-
-      // ✅ Tabs
-      rows[0].tabs = TABS;
-
-      /* =====================================================
-         🔥 RELATED DATA (INFO TAB LOGIC)
-         ===================================================== */
-
-      // 👉 DOCTOR PROFILE → clinics + hospitals
-      if (type === "doctor") {
-        const doctorId = rows[0].id;
-
-        const [clinics] = await pool.query(`
-          SELECT cl.*,
-                 dc.consultation_fee,
-                 dc.timings,
-                 dc.is_primary
-          FROM doctor_clinic dc
-          JOIN clinics cl ON cl.id = dc.clinic_id
-          WHERE dc.doctor_id = ?
-          ORDER BY dc.is_primary DESC
-        `, [doctorId]);
-
-        const [hospitals] = await pool.query(`
-          SELECT h.*,
-                 dh.consultation_fee,
-                 dh.timings,
-                 dh.is_primary
-          FROM doctor_hospital dh
-          JOIN hospitals h ON h.id = dh.hospital_id
-          WHERE dh.doctor_id = ?
-          ORDER BY dh.is_primary DESC
-        `, [doctorId]);
-
-        rows[0].clinics = clinics;
-        rows[0].hospitals = hospitals;
-      }
-
-      // 👉 HOSPITAL PROFILE → doctors
-      if (type === "hospital") {
-        const hospitalId = rows[0].id;
-
-        const [doctors] = await pool.query(`
-          SELECT d.*,
-                 dh.consultation_fee,
-                 dh.timings,
-                 dh.is_primary
-          FROM doctor_hospital dh
-          JOIN doctors d ON d.id = dh.doctor_id
-          WHERE dh.hospital_id = ?
-          ORDER BY dh.is_primary DESC
-        `, [hospitalId]);
-
-        rows[0].doctors = doctors;
-      }
-
-      // 👉 CLINIC PROFILE → doctors
-      if (type === "clinic") {
-        const clinicId = rows[0].id;
-
-        const [doctors] = await pool.query(`
-          SELECT d.*,
-                 dc.consultation_fee,
-                 dc.timings,
-                 dc.is_primary
-          FROM doctor_clinic dc
-          JOIN doctors d ON d.id = dc.doctor_id
-          WHERE dc.clinic_id = ?
-          ORDER BY dc.is_primary DESC
-        `, [clinicId]);
-
-        rows[0].doctors = doctors;
-      }
-
-      return sendResponse(type, rows, {}, true);
+    if (area) {
+      const [[a]] = await pool.query(
+        `SELECT id FROM areas WHERE LOWER(slug) = LOWER(?) LIMIT 1`,
+        [area]
+      );
+      areaId = a?.id || null;
     }
 
     /* =====================================================
-       LOCATION RESOLUTION
-       ===================================================== */
-    const userProvidedLocation = typeof req.query.location !== "undefined";
-    location = userProvidedLocation
-      ? (location ? location.toString().trim() : "")
-      : "Delhi";
+       2️⃣ SEARCH INTENT (doctor / hospital / clinic / others)
+    ===================================================== */
+    let entity_type = null;
+    let entity_id = null;
 
-    const resolveLocation = async (loc) => {
-      const result = { area_id: null, city_id: null, state_city_ids: [] };
-      if (!loc) return result;
+    const [[intent]] = await pool.query(
+      `
+      SELECT entity_type, entity_id
+      FROM search_intents
+      WHERE keyword = ?
+        AND status = 1
+      ORDER BY priority DESC
+      LIMIT 1
+      `,
+      [keyword]
+    );
 
-      if (/^\d+$/.test(loc)) {
-        result.area_id = parseInt(loc, 10);
-        return result;
-      }
-
-      let [rows] = await pool.query(
-        `SELECT id FROM areas WHERE LOWER(name)=LOWER(?) LIMIT 1`,
-        [loc]
-      );
-      if (rows.length) return { ...result, area_id: rows[0].id };
-
-      [rows] = await pool.query(
-        `SELECT id FROM cities WHERE LOWER(name)=LOWER(?) LIMIT 1`,
-        [loc]
-      );
-      if (rows.length) return { ...result, city_id: rows[0].id };
-
-      [rows] = await pool.query(
-        `SELECT id FROM states WHERE LOWER(name)=LOWER(?) LIMIT 1`,
-        [loc]
-      );
-      if (rows.length) {
-        const [cityRows] = await pool.query(
-          `SELECT id FROM cities WHERE state_id=?`,
-          [rows[0].id]
-        );
-        result.state_city_ids = cityRows.map(r => r.id);
-      }
-
-      return result;
-    };
-
-    const locationData = await resolveLocation(location);
-
-    const buildMainLocationClause = (alias) => {
-      if (locationData.area_id)
-        return { clause: `${alias}.area_id = ?`, params: [locationData.area_id] };
-      if (locationData.city_id)
-        return { clause: `${alias}.city_id = ?`, params: [locationData.city_id] };
-      if (locationData.state_city_ids.length) {
-        return {
-          clause: `${alias}.city_id IN (?)`,
-          params: [locationData.state_city_ids]
-        };
-      }
-      return { clause: "", params: [] };
-    };
+    if (intent) {
+      entity_type = intent.entity_type;
+      entity_id = intent.entity_id;
+    }
 
     /* =====================================================
-       SUPPORT TYPES
-       ===================================================== */
-    if (["specialization", "service", "procedure", "symptom"].includes(type)) {
-      const mappingTables = {
-        specialization: {
-          doctor: "doctor_specialization",
-          hospital: "hospital_specialization",
-          clinic: "clinic_specialization",
-          col: "specialization_id",
-        }
-      };
+       🔥 3️⃣ PURE INTENT HANDLING (NO entity_id)
+       doctors / hospitals / clinics
+    ===================================================== */
+    if (intent && ["doctor", "hospital", "clinic"].includes(entity_type)) {
+      /* -------- DOCTORS -------- */
+      if (entity_type === "doctor") {
+        let where = "WHERE 1=1";
+        const qParams = [];
 
-      const mapping = mappingTables[type];
-      const results = {};
-      const aliases = { doctor: "d", hospital: "h", clinic: "cl" };
-
-      for (const entity of ["doctor", "hospital", "clinic"]) {
-        const alias = aliases[entity];
-        let query = `
-          SELECT ${alias}.*,
-                 a.name AS area_name,
-                 c.name AS city_name,
-                 s.name AS state_name,
-                 sp.id AS specialization_id,
-                 sp.name AS specialization_name
-          FROM ${tableMap[entity]} ${alias}
-          JOIN ${mapping[entity]} m ON m.${entity}_id = ${alias}.id
-          ${locationJoin(alias)}
-          ${specializationJoin(entity, alias)}
-          WHERE 1=1
-        `;
-        const params = [];
-
-        if (id) {
-          query += ` AND m.${mapping.col} = ?`;
-          params.push(id);
+        if (cityId) {
+          where += " AND d.city_id = ?";
+          qParams.push(cityId);
         }
 
-        const loc = buildMainLocationClause(alias);
-        if (loc.clause) {
-          query += ` AND ${loc.clause}`;
-          params.push(...loc.params);
-        }
+        const [doctors] = await pool.query(
+          `
+          SELECT 
+            d.id,
+            d.name,
+            d.slug,
+            d.image_url,
+            d.experience_years,
+            d.rating,
+            d.consultation_fee,
+            a.name AS area_name,
+            c.name AS city_name
+          FROM doctors d
+          LEFT JOIN areas a ON a.id = d.area_id
+          LEFT JOIN cities c ON c.id = d.city_id
+          ${where}
+          ORDER BY d.rating DESC, d.experience_years DESC
+          LIMIT ?
+          `,
+          [...qParams, Number(limit)]
+        );
 
-        query += ` ORDER BY ${alias}.name ASC`;
-        if (limit) query += ` LIMIT ${limit}`;
-
-        const [rows] = await pool.query(query, params);
-        results[entity] = rows;
+        return res.json({
+          items: doctors,
+          meta: { count: doctors.length, intent: "doctor", keyword },
+        });
       }
 
-      const count =
-        results.doctor.length +
-        results.hospital.length +
-        results.clinic.length;
+      /* -------- HOSPITALS -------- */
+      if (entity_type === "hospital") {
+        const [hospitals] = await pool.query(
+          `
+          SELECT *
+          FROM hospitals
+          ${cityId ? "WHERE city_id = ?" : ""}
+          LIMIT ?
+          `,
+          cityId ? [cityId, Number(limit)] : [Number(limit)]
+        );
 
+        return res.json({
+          items: hospitals,
+          meta: { count: hospitals.length, intent: "hospital", keyword },
+        });
+      }
+
+      /* -------- CLINICS -------- */
+      if (entity_type === "clinic") {
+        const [clinics] = await pool.query(
+          `
+          SELECT *
+          FROM clinics
+          ${cityId ? "WHERE city_id = ?" : ""}
+          LIMIT ?
+          `,
+          cityId ? [cityId, Number(limit)] : [Number(limit)]
+        );
+
+        return res.json({
+          items: clinics,
+          meta: { count: clinics.length, intent: "clinic", keyword },
+        });
+      }
+    }
+
+    /* =====================================================
+       4️⃣ FALLBACK ENTITY RESOLUTION
+       (specialization / symptom / service / procedure)
+    ===================================================== */
+    if (!entity_id) {
+      const fallbacks = [
+        { type: "specialization", table: "specializations" },
+        { type: "symptom", table: "symptoms" },
+        { type: "service", table: "services" },
+        { type: "procedure", table: "procedures" },
+      ];
+
+      for (const fb of fallbacks) {
+        const [[row]] = await pool.query(
+          `
+          SELECT id
+          FROM ${fb.table}
+          WHERE slug = ?
+             OR LOWER(name) = ?
+          LIMIT 1
+          `,
+          [keyword, normalizedName]
+        );
+
+        if (row) {
+          entity_type = fb.type;
+          entity_id = row.id;
+          break;
+        }
+      }
+    }
+
+    if (!entity_id) {
       return res.json({
-        type,
         items: [],
-        related: results,
-        meta: { single: false, count }
+        meta: { count: 0, intent: null, keyword },
       });
     }
 
     /* =====================================================
-       MAIN TYPE LIST
-       ===================================================== */
-    const alias = "t";
-    const loc = buildMainLocationClause(alias);
-    const params = [];
+       5️⃣ ENTITY → DOCTOR MAP
+    ===================================================== */
+    const map = {
+      specialization: "doctor_specialization",
+      service: "doctor_service",
+      procedure: "doctor_procedure",
+      symptom: "doctor_symptom",
+    };
 
-    let q = `
-      SELECT ${alias}.*,
-             a.name AS area_name,
-             c.name AS city_name,
-             s.name AS state_name,
-             sp.id AS specialization_id,
-             sp.name AS specialization_name
-      FROM ${tableName} ${alias}
-      ${locationJoin(alias)}
-      ${specializationJoin(type, alias)}
-    `;
+    let where = "WHERE 1=1";
 
-    if (loc.clause) {
-      q += ` WHERE ${loc.clause}`;
-      params.push(...loc.params);
+    if (cityId) {
+      where += " AND d.city_id = ?";
+      params.push(cityId);
     }
 
-    q += ` ORDER BY ${alias}.name ASC`;
-    if (limit) q += ` LIMIT ${limit}`;
+    /* =====================================================
+       6️⃣ FETCH DOCTORS
+    ===================================================== */
+    const [doctors] = await pool.query(
+      `
+      SELECT DISTINCT
+        d.id,
+        d.name,
+        d.slug,
+        d.image_url,
+        d.experience_years,
+        d.rating,
+        d.consultation_fee,
+        a.name AS area_name,
+        c.name AS city_name,
+        sp.name AS specialization_name
+      FROM doctors d
+      JOIN ${map[entity_type]} m
+        ON m.doctor_id = d.id
+      LEFT JOIN doctor_specialization ds
+        ON ds.doctor_id = d.id AND ds.is_primary = 1
+      LEFT JOIN specializations sp
+        ON sp.id = ds.specialization_id
+      LEFT JOIN areas a ON a.id = d.area_id
+      LEFT JOIN cities c ON c.id = d.city_id
+      ${where}
+        AND m.${entity_type}_id = ?
+      ORDER BY d.rating DESC, d.experience_years DESC
+      LIMIT ?
+      `,
+      [...params, entity_id, Number(limit)]
+    );
 
-    const [rows] = await pool.query(q, params);
-    return sendResponse(type, rows);
+    /* =====================================================
+       7️⃣ RESPONSE
+    ===================================================== */
+    return res.json({
+      items: doctors,
+      meta: {
+        count: doctors.length,
+        intent: entity_type,
+        keyword,
+      },
+    });
+  } catch (error) {
+    console.error("❌ searchByIntent error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
 
+export const getSearchDetails = async (req, res) => {
+  try {
+    const {
+      type,
+      slug,
+      city,
+      area,
+      limit = 20,
+      profile = "false",
+    } = req.query;
+
+    console.log("🔥 SEARCH DETAILS HIT", { query: req.query });
+
+    if (!type) {
+      return res.status(400).json({ error: "type is required" });
+    }
+
+    const isProfile = profile === "true";
+    const params = [];
+
+    /* =====================================================
+       1️⃣ LOCATION RESOLUTION
+    ===================================================== */
+    let cityId = null;
+    let areaId = null;
+
+    if (city) {
+      const [cityRows] = await pool.query(
+        `SELECT id FROM cities WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+        [city]
+      );
+      cityId = cityRows?.[0]?.id || null;
+    }
+
+    if (area) {
+      const [areaRows] = await pool.query(
+        `SELECT id FROM areas WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+        [area]
+      );
+      areaId = areaRows?.[0]?.id || null;
+    }
+
+    /* =====================================================
+       2️⃣ PROFILE FETCH (DOCTOR / HOSPITAL / CLINIC)
+    ===================================================== */
+    if (isProfile && slug && ["doctor", "hospital", "clinic"].includes(type)) {
+      const table = `${type}s`;
+
+      // 🔐 SLUG → ID
+      const [idRows] = await pool.query(
+        `SELECT id FROM ${table} WHERE LOWER(TRIM(slug)) = LOWER(TRIM(?)) LIMIT 1`,
+        [slug]
+      );
+
+      const idRow = idRows?.[0];
+      if (!idRow) {
+        return res.json({
+          type,
+          items: [],
+          meta: { single: true, count: 0 },
+        });
+      }
+
+      let specializationJoin = "";
+      if (type === "doctor") {
+        specializationJoin = `
+          LEFT JOIN doctor_specialization ds 
+            ON ds.doctor_id = t.id AND ds.is_primary = 1
+          LEFT JOIN specializations sp 
+            ON sp.id = ds.specialization_id
+        `;
+      } else if (type === "hospital") {
+        specializationJoin = `
+          LEFT JOIN hospital_specialization hs 
+            ON hs.hospital_id = t.id AND hs.is_primary = 1
+          LEFT JOIN specializations sp 
+            ON sp.id = hs.specialization_id
+        `;
+      } else if (type === "clinic") {
+        specializationJoin = `
+          LEFT JOIN clinic_specialization cs 
+            ON cs.clinic_id = t.id AND cs.is_primary = 1
+          LEFT JOIN specializations sp 
+            ON sp.id = cs.specialization_id
+        `;
+      }
+
+      const [profileRows] = await pool.query(
+        `
+        SELECT 
+          t.*,
+          a.name AS area_name,
+          c.name AS city_name,
+          s.name AS state_name,
+          sp.name AS specialization_name
+        FROM ${table} t
+        LEFT JOIN areas a ON a.id = t.area_id
+        LEFT JOIN cities c ON c.id = t.city_id
+        LEFT JOIN states s ON s.id = c.state_id
+        ${specializationJoin}
+        WHERE t.id = ?
+        LIMIT 1
+        `,
+        [idRow.id]
+      );
+
+      if (!profileRows.length) {
+        return res.json({
+          type,
+          items: [],
+          meta: { single: true, count: 0 },
+        });
+      }
+
+      const item = profileRows[0];
+
+      /* =====================================================
+         3️⃣ DOCTOR → HOSPITAL / CLINIC
+      ===================================================== */
+      if (type === "doctor") {
+        const [clinicRows] = await pool.query(
+          `
+          SELECT cl.*, dc.consultation_fee, dc.timings, dc.is_primary
+          FROM doctor_clinic dc
+          JOIN clinics cl ON cl.id = dc.clinic_id
+          WHERE dc.doctor_id = ?
+          ORDER BY dc.is_primary DESC
+          `,
+          [item.id]
+        );
+
+        const [hospitalRows] = await pool.query(
+          `
+          SELECT h.*, dh.consultation_fee, dh.timings, dh.is_primary
+          FROM doctor_hospital dh
+          JOIN hospitals h ON h.id = dh.hospital_id
+          WHERE dh.doctor_id = ?
+          ORDER BY dh.is_primary DESC
+          `,
+          [item.id]
+        );
+
+        item.clinics = clinicRows;
+        item.hospitals = hospitalRows;
+      }
+
+      /* =====================================================
+         4️⃣ HOSPITAL → DOCTORS
+      ===================================================== */
+      if (type === "hospital") {
+        const [doctorRows] = await pool.query(
+          `
+          SELECT 
+            d.*,
+            dh.consultation_fee,
+            dh.timings,
+            dh.is_primary,
+            a.name AS area_name,
+            c.name AS city_name,
+            s.name AS state_name
+          FROM doctor_hospital dh
+          JOIN doctors d ON d.id = dh.doctor_id
+          LEFT JOIN areas a ON a.id = d.area_id
+          LEFT JOIN cities c ON c.id = d.city_id
+          LEFT JOIN states s ON s.id = c.state_id
+          WHERE dh.hospital_id = ?
+          ORDER BY dh.is_primary DESC, d.name ASC
+          `,
+          [item.id]
+        );
+
+        item.doctors = doctorRows;
+      }
+
+      /* =====================================================
+         5️⃣ CLINIC → DOCTORS
+      ===================================================== */
+      if (type === "clinic") {
+        const [doctorRows] = await pool.query(
+          `
+          SELECT 
+            d.*,
+            dc.consultation_fee,
+            dc.timings,
+            dc.is_primary,
+            a.name AS area_name,
+            c.name AS city_name,
+            s.name AS state_name
+          FROM doctor_clinic dc
+          JOIN doctors d ON d.id = dc.doctor_id
+          LEFT JOIN areas a ON a.id = d.area_id
+          LEFT JOIN cities c ON c.id = d.city_id
+          LEFT JOIN states s ON s.id = c.state_id
+          WHERE dc.clinic_id = ?
+          ORDER BY dc.is_primary DESC, d.name ASC
+          `,
+          [item.id]
+        );
+
+        item.doctors = doctorRows;
+      }
+
+      return res.json({
+        type,
+        items: [item],
+        meta: { single: true, count: 1 },
+      });
+    }
+
+    /* =====================================================
+       6️⃣ LIST MODE (DOCTOR / HOSPITAL / CLINIC)
+    ===================================================== */
+    if (["doctor", "hospital", "clinic"].includes(type)) {
+      const table = `${type}s`;
+      let where = "WHERE 1=1";
+
+      if (cityId) {
+        where += " AND t.city_id = ?";
+        params.push(cityId);
+      }
+
+      if (areaId) {
+        where += " AND t.area_id = ?";
+        params.push(areaId);
+      }
+
+      const [listRows] = await pool.query(
+        `
+        SELECT 
+          t.*,
+          a.name AS area_name,
+          c.name AS city_name,
+          s.name AS state_name
+        FROM ${table} t
+        LEFT JOIN areas a ON a.id = t.area_id
+        LEFT JOIN cities c ON c.id = t.city_id
+        LEFT JOIN states s ON s.id = c.state_id
+        ${where}
+        ORDER BY t.name ASC
+        LIMIT ?
+        `,
+        [...params, Number(limit)]
+      );
+
+      return res.json({
+        type,
+        items: listRows,
+        meta: { single: false, count: listRows.length },
+      });
+    }
+
+    return res.status(400).json({ error: "Invalid type" });
   } catch (error) {
     console.error("❌ getSearchDetails error:", error);
     res.status(500).json({ error: "Server error" });
   }
 };
+
+
+
+
+
+// export const searchByIntent = async (req, res) => {
+//   try {
+//     const { q, city, area, limit = 20, cursor } = req.query;
+
+//     if (!q) {
+//       return res.status(400).json({ error: "q (keyword) is required" });
+//     }
+
+//     const keyword = q.trim().toLowerCase();
+//     const normalizedName = keyword.replace(/-/g, " ");
+//     const params = [];
+
+//     // 🔐 cursor handling (NEW, safe)
+//     const decoded = cursor ? decodeCursor(cursor) : null;
+//     const lastId = decoded?.lastId || 0;
+
+//     /* =====================================================
+//        1️⃣ LOCATION RESOLUTION
+//     ===================================================== */
+//     let cityId = null;
+//     let areaId = null;
+
+//     if (city) {
+//       const [[c]] = await pool.query(
+//         `SELECT id FROM cities WHERE LOWER(slug) = LOWER(?) OR LOWER(name) = LOWER(?) LIMIT 1`,
+//         [city, city]
+//       );
+//       cityId = c?.id || null;
+//     }
+
+//     if (area) {
+//       const [[a]] = await pool.query(
+//         `SELECT id FROM areas WHERE LOWER(slug) = LOWER(?) LIMIT 1`,
+//         [area]
+//       );
+//       areaId = a?.id || null;
+//     }
+
+//     /* =====================================================
+//        2️⃣ SEARCH INTENT
+//     ===================================================== */
+//     let entity_type = null;
+//     let entity_id = null;
+
+//     const [[intent]] = await pool.query(
+//       `
+//       SELECT entity_type, entity_id
+//       FROM search_intents
+//       WHERE keyword = ?
+//         AND status = 1
+//       ORDER BY priority DESC
+//       LIMIT 1
+//       `,
+//       [keyword]
+//     );
+
+//     if (intent) {
+//       entity_type = intent.entity_type;
+//       entity_id = intent.entity_id;
+//     }
+
+//     /* =====================================================
+//        3️⃣ PURE INTENT (doctor / hospital / clinic)
+//     ===================================================== */
+//     if (intent && ["doctor", "hospital", "clinic"].includes(entity_type)) {
+
+//       /* -------- DOCTOR -------- */
+//       if (entity_type === "doctor") {
+//         let where = "WHERE d.id > ?";
+//         const qParams = [lastId];
+
+//         if (cityId) {
+//           where += " AND d.city_id = ?";
+//           qParams.push(cityId);
+//         }
+
+//         const [doctors] = await pool.query(
+//           `
+//           SELECT 
+//             d.id,
+//             d.name,
+//             d.slug,
+//             d.image_url,
+//             d.experience_years,
+//             d.rating,
+//             d.consultation_fee,
+//             a.name AS area_name,
+//             c.name AS city_name
+//           FROM doctors d
+//           LEFT JOIN areas a ON a.id = d.area_id
+//           LEFT JOIN cities c ON c.id = d.city_id
+//           ${where}
+//           ORDER BY d.id ASC
+//           LIMIT ?
+//           `,
+//           [...qParams, Number(limit)]
+//         );
+
+//         const nextCursor =
+//           doctors.length === Number(limit)
+//             ? encodeCursor({ lastId: doctors[doctors.length - 1].id })
+//             : null;
+
+//         return sendResponse(res, {
+//           items: doctors,
+//           meta: {
+//             count: doctors.length,
+//             intent: "doctor",
+//             keyword,
+//             nextCursor,
+//           },
+//         });
+//       }
+
+//       /* -------- HOSPITAL -------- */
+//       if (entity_type === "hospital") {
+//         const [hospitals] = await pool.query(
+//           `
+//           SELECT *
+//           FROM hospitals
+//           ${cityId ? "WHERE city_id = ?" : ""}
+//           LIMIT ?
+//           `,
+//           cityId ? [cityId, Number(limit)] : [Number(limit)]
+//         );
+
+//         return sendResponse(res, {
+//           items: hospitals,
+//           meta: { count: hospitals.length, intent: "hospital", keyword },
+//         });
+//       }
+
+//       /* -------- CLINIC -------- */
+//       if (entity_type === "clinic") {
+//         const [clinics] = await pool.query(
+//           `
+//           SELECT *
+//           FROM clinics
+//           ${cityId ? "WHERE city_id = ?" : ""}
+//           LIMIT ?
+//           `,
+//           cityId ? [cityId, Number(limit)] : [Number(limit)]
+//         );
+
+//         return sendResponse(res, {
+//           items: clinics,
+//           meta: { count: clinics.length, intent: "clinic", keyword },
+//         });
+//       }
+//     }
+
+//     /* =====================================================
+//        4️⃣ FALLBACK ENTITY RESOLUTION
+//     ===================================================== */
+//     if (!entity_id) {
+//       const fallbacks = [
+//         { type: "specialization", table: "specializations" },
+//         { type: "symptom", table: "symptoms" },
+//         { type: "service", table: "services" },
+//         { type: "procedure", table: "procedures" },
+//       ];
+
+//       for (const fb of fallbacks) {
+//         const [[row]] = await pool.query(
+//           `
+//           SELECT id
+//           FROM ${fb.table}
+//           WHERE slug = ?
+//              OR LOWER(name) = ?
+//           LIMIT 1
+//           `,
+//           [keyword, normalizedName]
+//         );
+
+//         if (row) {
+//           entity_type = fb.type;
+//           entity_id = row.id;
+//           break;
+//         }
+//       }
+//     }
+
+//     if (!entity_id) {
+//       return sendResponse(res, {
+//         items: [],
+//         meta: { count: 0, intent: null, keyword },
+//       });
+//     }
+
+//     /* =====================================================
+//        5️⃣ ENTITY → DOCTOR MAP
+//     ===================================================== */
+//     const map = {
+//       specialization: "doctor_specialization",
+//       service: "doctor_service",
+//       procedure: "doctor_procedure",
+//       symptom: "doctor_symptom",
+//     };
+
+//     let where = "WHERE d.id > ?";
+//     params.push(lastId);
+
+//     if (cityId) {
+//       where += " AND d.city_id = ?";
+//       params.push(cityId);
+//     }
+
+//     /* =====================================================
+//        6️⃣ FETCH DOCTORS
+//     ===================================================== */
+//     const [doctors] = await pool.query(
+//       `
+//       SELECT DISTINCT
+//         d.id,
+//         d.name,
+//         d.slug,
+//         d.image_url,
+//         d.experience_years,
+//         d.rating,
+//         d.consultation_fee,
+//         a.name AS area_name,
+//         c.name AS city_name,
+//         sp.name AS specialization_name
+//       FROM doctors d
+//       JOIN ${map[entity_type]} m
+//         ON m.doctor_id = d.id
+//       LEFT JOIN doctor_specialization ds
+//         ON ds.doctor_id = d.id AND ds.is_primary = 1
+//       LEFT JOIN specializations sp
+//         ON sp.id = ds.specialization_id
+//       LEFT JOIN areas a ON a.id = d.area_id
+//       LEFT JOIN cities c ON c.id = d.city_id
+//       ${where}
+//         AND m.${entity_type}_id = ?
+//       ORDER BY d.id ASC
+//       LIMIT ?
+//       `,
+//       [...params, entity_id, Number(limit)]
+//     );
+
+//     const nextCursor =
+//       doctors.length === Number(limit)
+//         ? encodeCursor({ lastId: doctors[doctors.length - 1].id })
+//         : null;
+
+//     /* =====================================================
+//        7️⃣ RESPONSE
+//     ===================================================== */
+//     return sendResponse(res, {
+//       items: doctors,
+//       meta: {
+//         count: doctors.length,
+//         intent: entity_type,
+//         keyword,
+//         nextCursor,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("❌ searchByIntent error:", error);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// };

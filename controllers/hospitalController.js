@@ -2,96 +2,40 @@ import pool from "../db.js";
 import uploadImageToS3 from "../helpers/uploadToS3.js";
 import deleteFromS3 from "../helpers/deleteFromS3.js";
 
-/**
- * GET /api/hospitals
- * Lightweight list + mapping IDs for quick edit prefilling
- */
+/* =====================================================
+   GET /api/hospitals
+   Lightweight list + mapping IDs
+   ===================================================== */
 export const getHospitals = async (req, res) => {
   try {
-    const [hospitals] = await pool.query(
-      `SELECT * FROM hospitals ORDER BY id DESC`
-    );
-
-    if (!hospitals || hospitals.length === 0) {
-      return res.json([]);
-    }
+    const [hospitals] = await pool.query(`SELECT * FROM hospitals ORDER BY id DESC`);
+    if (!hospitals || hospitals.length === 0) return res.json([]);
 
     const ids = hospitals.map(h => h.id);
 
-    // ---------- FIXED QUERIES ----------
-    const specializations = await pool
-      .query(
-        `SELECT hospital_id, specialization_id AS id 
-         FROM hospital_specialization 
-         WHERE hospital_id IN (?)`,
-        [ids]
-      )
-      .then(r => r[0] || [])
-      .catch(() => []);
+    const [specializations] = await pool.query(
+      `SELECT hospital_id, specialization_id AS id FROM hospital_specialization WHERE hospital_id IN (?)`, [ids]
+    );
+    // const [clinics] = await pool.query(
+    //   `SELECT hospital_id, clinic_id AS id FROM hospital_clinic WHERE hospital_id IN (?)`, [ids]
+    // );
+    const [services] = await pool.query(
+      `SELECT hospital_id, service_id AS id FROM hospital_service WHERE hospital_id IN (?)`, [ids]
+    );
+    const [procedures] = await pool.query(
+      `SELECT hospital_id, procedure_id AS id FROM hospital_procedure WHERE hospital_id IN (?)`, [ids]
+    );
+    const [symptoms] = await pool.query(
+      `SELECT hospital_id, symptom_id AS id FROM hospital_symptom WHERE hospital_id IN (?)`, [ids]
+    );
 
-    const clinics = await pool
-      .query(
-        `SELECT hospital_id, clinic_id AS id 
-         FROM hospital_clinic 
-         WHERE hospital_id IN (?)`,
-        [ids]
-      )
-      .then(r => r[0] || [])
-      .catch(() => []);
-
-    const services = await pool
-      .query(
-        `SELECT hospital_id, service_id AS id 
-         FROM hospital_service 
-         WHERE hospital_id IN (?)`,
-        [ids]
-      )
-      .then(r => r[0] || [])
-      .catch(() => []);
-
-    const procedures = await pool
-      .query(
-        `SELECT hospital_id, procedure_id AS id 
-         FROM hospital_procedure 
-         WHERE hospital_id IN (?)`,
-        [ids]
-      )
-      .then(r => r[0] || [])
-      .catch(() => []);
-
-    const symptoms = await pool
-      .query(
-        `SELECT hospital_id, symptom_id AS id 
-         FROM hospital_symptom 
-         WHERE hospital_id IN (?)`,
-        [ids]
-      )
-      .then(r => r[0] || [])
-      .catch(() => []);
-
-
-    // ---------- BUILD FINAL RESPONSE ----------
     const response = hospitals.map(h => ({
       ...h,
-      specializations: specializations
-        .filter(x => x.hospital_id === h.id)
-        .map(x => x.id),
-
-      services: services
-        .filter(x => x.hospital_id === h.id)
-        .map(x => x.id),
-
-      procedures: procedures
-        .filter(x => x.hospital_id === h.id)
-        .map(x => x.id),
-
-      symptoms: symptoms
-        .filter(x => x.hospital_id === h.id)
-        .map(x => x.id),
-
-      clinics: clinics
-        .filter(x => x.hospital_id === h.id)
-        .map(x => x.id),
+      specializations: specializations.filter(x => x.hospital_id === h.id).map(x => x.id),
+      // clinics: clinics.filter(x => x.hospital_id === h.id).map(x => x.id),
+      services: services.filter(x => x.hospital_id === h.id).map(x => x.id),
+      procedures: procedures.filter(x => x.hospital_id === h.id).map(x => x.id),
+      symptoms: symptoms.filter(x => x.hospital_id === h.id).map(x => x.id),
     }));
 
     res.json(response);
@@ -102,79 +46,60 @@ export const getHospitals = async (req, res) => {
   }
 };
 
-
+/* =====================================================
+   GET /api/hospitals/:id
+   Full hospital details + relations
+   ===================================================== */
 export const getHospitalById = async (req, res) => {
   const { id } = req.params;
-
   try {
-    const [[hospital]] = await pool.query(
-      `SELECT * FROM hospitals WHERE id = ?`,
-      [id]
-    );
+    const [[hospital]] = await pool.query(`SELECT * FROM hospitals WHERE id = ?`, [id]);
+    if (!hospital) return res.status(404).json({ error: "Hospital not found" });
 
-    if (!hospital) {
-      return res.status(404).json({ error: "Hospital not found" });
-    }
-
-    // return both id + name (for dropdowns)
     const [specializations] = await pool.query(
       `SELECT hs.specialization_id AS id, s.name
        FROM hospital_specialization hs
        JOIN specializations s ON s.id = hs.specialization_id
-       WHERE hs.hospital_id = ?`,
-      [id]
+       WHERE hs.hospital_id = ?`, [id]
     );
 
     const [services] = await pool.query(
       `SELECT hs.service_id AS id, s.name
        FROM hospital_service hs
        JOIN services s ON s.id = hs.service_id
-       WHERE hs.hospital_id = ?`,
-      [id]
+       WHERE hs.hospital_id = ?`, [id]
     );
 
     const [procedures] = await pool.query(
       `SELECT hp.procedure_id AS id, p.name
        FROM hospital_procedure hp
        JOIN procedures p ON p.id = hp.procedure_id
-       WHERE hp.hospital_id = ?`,
-      [id]
+       WHERE hp.hospital_id = ?`, [id]
     );
 
     const [symptoms] = await pool.query(
       `SELECT hs.symptom_id AS id, s.name
        FROM hospital_symptom hs
        JOIN symptoms s ON s.id = hs.symptom_id
-       WHERE hs.hospital_id = ?`,
-      [id]
+       WHERE hs.hospital_id = ?`, [id]
     );
 
-    // city & area
-    let city = null;
-    let area = null;
-
+    let city = null, area = null;
     if (hospital.city_id) {
-      const [crow] = await pool.query(
-        `SELECT id, name FROM cities WHERE id = ?`,
-        [hospital.city_id]
-      );
+      const [crow] = await pool.query(`SELECT id, name FROM cities WHERE id = ?`, [hospital.city_id]);
       city = crow?.[0] ?? null;
     }
-
     if (hospital.area_id) {
-      const [arow] = await pool.query(
-        `SELECT id, name FROM areas WHERE id = ?`,
-        [hospital.area_id]
-      );
+      const [arow] = await pool.query(`SELECT id, name FROM areas WHERE id = ?`, [hospital.area_id]);
       area = arow?.[0] ?? null;
     }
 
     res.json({
       ...hospital,
-      specializations, // <-- ARRAY OF OBJECTS WITH id + name
-      services,        // <-- FIXED
-      procedures,      // <-- FIXED
-      symptoms,        // <-- FIXED
+      specializations,
+      services,
+      procedures,
+      symptoms,
       city,
       area,
     });
@@ -185,20 +110,12 @@ export const getHospitalById = async (req, res) => {
   }
 };
 
-
-
 /* =====================================================
-   SLUG HELPERS (INLINE – NO EXTERNAL FILES)
+   SLUG HELPERS
    ===================================================== */
-const makeSlug = (text) => {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-};
+const makeSlug = (text) => text.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-const getUniqueHospitalSlug = async (connection, baseSlug, excludeId = null) => {
+const getUniqueHospitalSlug = async (baseSlug, excludeId = null) => {
   let slug = baseSlug;
   let counter = 1;
 
@@ -208,62 +125,52 @@ const getUniqueHospitalSlug = async (connection, baseSlug, excludeId = null) => 
       : `SELECT id FROM hospitals WHERE slug = ? LIMIT 1`;
 
     const params = excludeId ? [slug, excludeId] : [slug];
-    const [[row]] = await connection.query(sql, params);
-
+    const [[row]] = await pool.query(sql, params);
     if (!row) return slug;
     slug = `${baseSlug}-${counter++}`;
   }
 };
 
 /* =====================================================
-   CREATE HOSPITAL (AUTO SLUG – PRACTO STYLE)
+   CREATE HOSPITAL
    ===================================================== */
 export const createHospital = async (req, res) => {
+  let imageKey = null;
+
   try {
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
+    let imageUrl = null;
 
-      /* ---------- IMAGE ---------- */
-      let imageUrl = null;
-      let imageKey = null;
+    if (req.file) {
+      const uploaded = await uploadImageToS3(req.file, "hospitals");
+      imageUrl = uploaded.imageUrl;
+      imageKey = uploaded.fileKey;
+    }
 
-      if (req.file) {
-        const uploaded = await uploadImageToS3(req.file, "hospitals");
-        imageUrl = uploaded.imageUrl;
-        imageKey = uploaded.fileKey;
-      }
+    const body = req.body || {};
+    const baseSlug = makeSlug(body.name || "");
+    const slug = await getUniqueHospitalSlug(baseSlug);
 
-      const body = req.body || {};
+    const normalizeArray = (v) => {
+      if (!v) return [];
+      if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+      if (typeof v === "string")
+        return v.split(",").map(x => Number(x.trim())).filter(Boolean);
+      return [];
+    };
 
-      /* ---------- AUTO SLUG ---------- */
-      const baseSlug = makeSlug(body.name || "");
-      const slug = await getUniqueHospitalSlug(connection, baseSlug);
+    const specializations = normalizeArray(body.specializations);
+    const services = normalizeArray(body.services);
+    const procedures = normalizeArray(body.procedures);
+    const symptoms = normalizeArray(body.symptoms);
 
-      /* ---------- ARRAY NORMALIZER ---------- */
-      const normalizeArray = (v) => {
-        if (!v) return [];
-        if (Array.isArray(v)) return v.map(Number).filter(Boolean);
-        if (typeof v === "string")
-          return v.split(",").map(x => Number(x.trim())).filter(Boolean);
-        return [];
-      };
-
-      const specializations = normalizeArray(body.specializations);
-      const services = normalizeArray(body.services);
-      const procedures = normalizeArray(body.procedures);
-      const symptoms = normalizeArray(body.symptoms);
-
-      /* ---------- INSERT HOSPITAL ---------- */
-      const insertSql = `
-        INSERT INTO hospitals
-        (name, slug, timing, short_description, about, image_url, image_key,
-         phone_1, phone_2, website, address, city_id, area_id, status,
-         seo_title, seo_keywords, seo_description)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      const params = [
+    /* ------------------ INSERT HOSPITAL ------------------ */
+    const [result] = await pool.query(
+      `INSERT INTO hospitals
+       (name, slug, timing, short_description, about, image_url, image_key,
+        phone_1, phone_2, website, address, city_id, area_id, status,
+        seo_title, seo_keywords, seo_description)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
         body.name || "",
         slug,
         body.timing || null,
@@ -281,218 +188,204 @@ export const createHospital = async (req, res) => {
         body.seo_title || null,
         body.seo_keywords || null,
         body.seo_description || null,
-      ];
+      ]
+    );
 
-      const [result] = await connection.query(insertSql, params);
-      const hospitalId = result.insertId;
+    const hospitalId = result.insertId;
 
-      /* ---------- MAPPING TABLES ---------- */
-      const insertMany = async (table, col, ids) => {
-        if (!ids.length) return;
-        const values = ids.map((x) => [hospitalId, x]);
-        await connection.query(
-          `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`,
-          [values]
-        );
-      };
+    /* ------------------ SPECIALIZATIONS ------------------ */
+    if (specializations.length) {
+      const values = specializations.map((sid, idx) => [
+        hospitalId,
+        sid,
+        idx === 0 ? 1 : 0, // primary
+      ]);
 
-      await insertMany("hospital_specialization", "specialization_id", specializations);
-      await insertMany("hospital_service", "service_id", services);
-      await insertMany("hospital_procedure", "procedure_id", procedures);
-      await insertMany("hospital_symptom", "symptom_id", symptoms);
-
-      await connection.commit();
-
-      res.status(201).json({
-        id: hospitalId,
-        slug,
-      });
-
-    } catch (err) {
-      await connection.rollback();
-      console.error("❌ createHospital Error:", err);
-      res.status(500).json({ error: "Failed to create hospital" });
-    } finally {
-      connection.release();
+      await pool.query(
+        `INSERT INTO hospital_specialization
+         (hospital_id, specialization_id, is_primary)
+         VALUES ?`,
+        [values]
+      );
     }
+
+    /* ------------------ OTHER RELATIONS ------------------ */
+    const insertMany = async (table, col, ids) => {
+      if (!ids.length) return;
+      const values = ids.map(x => [hospitalId, x]);
+      await pool.query(
+        `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`,
+        [values]
+      );
+    };
+
+    await insertMany("hospital_service", "service_id", services);
+    await insertMany("hospital_procedure", "procedure_id", procedures);
+    await insertMany("hospital_symptom", "symptom_id", symptoms);
+
+    res.status(201).json({ id: hospitalId, slug });
+
   } catch (err) {
-    console.error("❌ createHospital Connection Error:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ createHospital Error:", err);
+    if (imageKey) await deleteFromS3(imageKey);
+    res.status(500).json({ error: "Failed to create hospital" });
   }
 };
 
 /* =====================================================
-   UPDATE HOSPITAL (REGENERATE SLUG IF NAME CHANGES)
+   UPDATE HOSPITAL
    ===================================================== */
 export const updateHospital = async (req, res) => {
   const { id } = req.params;
+  let newImageKey = null;
 
   try {
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
+    const [[existing]] = await pool.query(
+      `SELECT id, name, slug, image_key FROM hospitals WHERE id = ?`,
+      [id]
+    );
 
-      const [[existing]] = await connection.query(
-        `SELECT id, name, image_key FROM hospitals WHERE id = ?`,
-        [id]
-      );
+    if (!existing) {
+      return res.status(404).json({ error: "Hospital not found" });
+    }
 
-      if (!existing) {
-        await connection.rollback();
-        return res.status(404).json({ error: "Hospital not found" });
-      }
+    const body = req.body || {};
 
-      /* ---------- SLUG UPDATE ---------- */
-      let newSlug = null;
-      if (req.body?.name && req.body.name !== existing.name) {
-        const baseSlug = makeSlug(req.body.name);
-        newSlug = await getUniqueHospitalSlug(connection, baseSlug, id);
-      }
+    /* ------------------ SLUG ------------------ */
+    let slug = existing.slug;
+    if (body.name && body.name !== existing.name) {
+      slug = await getUniqueHospitalSlug(makeSlug(body.name), id);
+    }
 
-      /* ---------- IMAGE UPDATE ---------- */
-      let newImageUrl = null;
-      let newImageKey = null;
+    /* ------------------ IMAGE ------------------ */
+    let imageUrl = null;
+    if (req.file) {
+      const up = await uploadImageToS3(req.file, "hospitals");
+      imageUrl = up.imageUrl;
+      newImageKey = up.fileKey;
+    }
 
-      if (req.file) {
-        const up = await uploadImageToS3(req.file, "hospitals");
-        newImageUrl = up.imageUrl;
-        newImageKey = up.fileKey;
-      }
+    /* ------------------ UPDATE HOSPITAL ------------------ */
+    const updateSql = `
+      UPDATE hospitals SET
+        name = ?,
+        slug = ?,
+        timing = ?, short_description = ?, about = ?,
+        phone_1 = ?, phone_2 = ?, website = ?, address = ?,
+        city_id = ?, area_id = ?, status = ?,
+        seo_title = ?, seo_keywords = ?, seo_description = ?
+        ${imageUrl ? ", image_url = ?, image_key = ?" : ""}
+      WHERE id = ?
+    `;
 
-      const body = req.body || {};
+    const params = [
+      body.name || existing.name,
+      slug,
+      body.timing || null,
+      body.short_description || null,
+      body.about || null,
+      body.phone_1 || null,
+      body.phone_2 || null,
+      body.website || null,
+      body.address || null,
+      body.city_id ? Number(body.city_id) : null,
+      body.area_id ? Number(body.area_id) : null,
+      body.status || "active",
+      body.seo_title || null,
+      body.seo_keywords || null,
+      body.seo_description || null,
+      ...(imageUrl ? [imageUrl, newImageKey] : []),
+      id
+    ];
 
-      /* ---------- UPDATE QUERY ---------- */
-      const updateSql = `
-        UPDATE hospitals SET
-          name = ?,
-          ${newSlug ? "slug = ?," : ""}
-          timing = ?, short_description = ?, about = ?,
-          phone_1 = ?, phone_2 = ?, website = ?, address = ?,
-          city_id = ?, area_id = ?, status = ?,
-          seo_title = ?, seo_keywords = ?, seo_description = ?
-          ${newImageUrl ? ", image_url = ?, image_key = ?" : ""}
-        WHERE id = ?
-      `;
+    await pool.query(updateSql, params);
 
-      const params = [
-        body.name || existing.name,
-        ...(newSlug ? [newSlug] : []),
-        body.timing || null,
-        body.short_description || null,
-        body.about || null,
-        body.phone_1 || null,
-        body.phone_2 || null,
-        body.website || null,
-        body.address || null,
-        body.city_id ? Number(body.city_id) : null,
-        body.area_id ? Number(body.area_id) : null,
-        body.status || "active",
-        body.seo_title || null,
-        body.seo_keywords || null,
-        body.seo_description || null,
-        ...(newImageUrl ? [newImageUrl, newImageKey] : []),
-        id,
-      ];
+    /* ------------------ NORMALIZE ------------------ */
+    const normalizeArray = (v) => {
+      if (v === undefined) return undefined;
+      if (!v) return [];
+      if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+      if (typeof v === "string")
+        return v.split(",").map(x => Number(x.trim())).filter(Boolean);
+      return [];
+    };
 
-      await connection.query(updateSql, params);
+    /* ------------------ SPECIALIZATIONS ------------------ */
+    const specializations = normalizeArray(body.specializations);
+    if (specializations !== undefined) {
+      await pool.query(`DELETE FROM hospital_specialization WHERE hospital_id = ?`, [id]);
 
-      /* ---------- MAPPING TABLES ---------- */
-      const normalizeArray = (v) => {
-        if (!v) return [];
-        if (Array.isArray(v)) return v.map(Number).filter(Boolean);
-        if (typeof v === "string")
-          return v.split(",").map(x => Number(x.trim())).filter(Boolean);
-        return [];
-      };
+      if (specializations.length) {
+        const values = specializations.map((sid, idx) => [
+          id,
+          sid,
+          idx === 0 ? 1 : 0
+        ]);
 
-      const specializations = normalizeArray(body.specializations);
-      const services = normalizeArray(body.services);
-      const procedures = normalizeArray(body.procedures);
-      const symptoms = normalizeArray(body.symptoms);
-
-      const deleteAndInsert = async (table, col, ids) => {
-        await connection.query(`DELETE FROM ${table} WHERE hospital_id = ?`, [id]);
-        if (!ids.length) return;
-        const values = ids.map((x) => [id, x]);
-        await connection.query(
-          `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`,
+        await pool.query(
+          `INSERT INTO hospital_specialization
+           (hospital_id, specialization_id, is_primary)
+           VALUES ?`,
           [values]
         );
-      };
-
-      await deleteAndInsert("hospital_specialization", "specialization_id", specializations);
-      await deleteAndInsert("hospital_service", "service_id", services);
-      await deleteAndInsert("hospital_procedure", "procedure_id", procedures);
-      await deleteAndInsert("hospital_symptom", "symptom_id", symptoms);
-
-      await connection.commit();
-
-      if (newImageKey && existing.image_key && existing.image_key !== newImageKey) {
-        await deleteFromS3(existing.image_key);
       }
-
-      res.json({
-        ok: true,
-        slug: newSlug || undefined,
-      });
-
-    } catch (err) {
-      await connection.rollback();
-      console.error("❌ updateHospital Error:", err);
-      res.status(500).json({ error: "Failed to update hospital" });
-    } finally {
-      connection.release();
     }
+
+    /* ------------------ OTHER RELATIONS ------------------ */
+    const replaceRelations = async (table, col, values) => {
+      if (values === undefined) return;
+      await pool.query(`DELETE FROM ${table} WHERE hospital_id = ?`, [id]);
+      if (!values.length) return;
+      const rows = values.map(v => [id, v]);
+      await pool.query(
+        `INSERT INTO ${table} (hospital_id, ${col}) VALUES ?`,
+        [rows]
+      );
+    };
+
+    await replaceRelations("hospital_service", "service_id", normalizeArray(body.services));
+    await replaceRelations("hospital_procedure", "procedure_id", normalizeArray(body.procedures));
+    await replaceRelations("hospital_symptom", "symptom_id", normalizeArray(body.symptoms));
+
+    /* ------------------ CLEAN OLD IMAGE ------------------ */
+    if (newImageKey && existing.image_key && existing.image_key !== newImageKey) {
+      await deleteFromS3(existing.image_key);
+    }
+
+    res.json({ ok: true, slug });
+
   } catch (err) {
-    console.error("❌ updateHospital Connection Error:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ updateHospital Error:", err);
+    if (newImageKey) await deleteFromS3(newImageKey);
+    res.status(500).json({ error: "Failed to update hospital" });
   }
 };
 
-/**
- * DELETE /api/hospitals/:id
- */
+
+/* =====================================================
+   DELETE HOSPITAL
+   ===================================================== */
 export const deleteHospital = async (req, res) => {
   const { id } = req.params;
   try {
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
+    const [[hospital]] = await pool.query(`SELECT image_key FROM hospitals WHERE id = ?`, [id]);
+    if (!hospital) return res.status(404).json({ error: "Hospital not found" });
 
-      // fetch image_key first
-      const [[hospital]] = await connection.query(`SELECT image_key FROM hospitals WHERE id = ?`, [id]);
-      if (!hospital) {
-        await connection.rollback();
-        return res.status(404).json({ error: "Hospital not found" });
-      }
-      const imageKey = hospital.image_key;
+    const imageKey = hospital.image_key;
 
-      // delete mapping rows
-      await connection.query(`DELETE FROM hospital_specialization WHERE hospital_id = ?`, [id]);
-      await connection.query(`DELETE FROM hospital_service WHERE hospital_id = ?`, [id]);
-      await connection.query(`DELETE FROM hospital_procedure WHERE hospital_id = ?`, [id]);
-      await connection.query(`DELETE FROM hospital_symptom WHERE hospital_id = ?`, [id]);
-
-      // delete hospital
-      await connection.query(`DELETE FROM hospitals WHERE id = ?`, [id]);
-
-      await connection.commit();
-
-      // delete s3 object afterwards
-      if (imageKey) {
-        await deleteFromS3(imageKey);
-      }
-
-      res.json({ ok: true });
-    } catch (err) {
-      await connection.rollback();
-      console.error("❌ deleteHospital Error:", err);
-      res.status(500).json({ error: "Failed to delete hospital" });
-    } finally {
-      connection.release();
+    const tables = ["hospital_specialization", "hospital_service", "hospital_procedure", "hospital_symptom"];
+    for (const t of tables) {
+      await pool.query(`DELETE FROM ${t} WHERE hospital_id = ?`, [id]);
     }
+
+    await pool.query(`DELETE FROM hospitals WHERE id = ?`, [id]);
+
+    if (imageKey) await deleteFromS3(imageKey);
+
+    res.json({ ok: true });
+
   } catch (err) {
-    console.error("❌ deleteHospital Connection Error:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ deleteHospital Error:", err);
+    res.status(500).json({ error: "Failed to delete hospital" });
   }
 };

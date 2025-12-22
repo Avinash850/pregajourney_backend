@@ -18,45 +18,26 @@ export const getClinics = async (req, res) => {
 
     const ids = clinics.map(c => c.id);
 
-    const specializations = await pool
-      .query(
-        `SELECT clinic_id, specialization_id AS id
-         FROM clinic_specialization
-         WHERE clinic_id IN (?)`,
-        [ids]
-      ).then(r => r[0] || []);
-
-    const services = await pool
-      .query(
-        `SELECT clinic_id, service_id AS id
-         FROM clinic_service
-         WHERE clinic_id IN (?)`,
-        [ids]
-      ).then(r => r[0] || []);
-
-    const procedures = await pool
-      .query(
-        `SELECT clinic_id, procedure_id AS id
-         FROM clinic_procedure
-         WHERE clinic_id IN (?)`,
-        [ids]
-      ).then(r => r[0] || []);
-
-    const symptoms = await pool
-      .query(
-        `SELECT clinic_id, symptom_id AS id
-         FROM clinic_symptom
-         WHERE clinic_id IN (?)`,
-        [ids]
-      ).then(r => r[0] || []);
-
-    const doctors = await pool
-      .query(
-        `SELECT clinic_id, doctor_id AS id
-         FROM doctor_clinic
-         WHERE clinic_id IN (?)`,
-        [ids]
-      ).then(r => r[0] || []);
+    const [specializations] = await pool.query(
+      `SELECT clinic_id, specialization_id AS id FROM clinic_specialization WHERE clinic_id IN (?)`,
+      [ids]
+    );
+    const [services] = await pool.query(
+      `SELECT clinic_id, service_id AS id FROM clinic_service WHERE clinic_id IN (?)`,
+      [ids]
+    );
+    const [procedures] = await pool.query(
+      `SELECT clinic_id, procedure_id AS id FROM clinic_procedure WHERE clinic_id IN (?)`,
+      [ids]
+    );
+    const [symptoms] = await pool.query(
+      `SELECT clinic_id, symptom_id AS id FROM clinic_symptom WHERE clinic_id IN (?)`,
+      [ids]
+    );
+    const [doctors] = await pool.query(
+      `SELECT clinic_id, doctor_id AS id FROM doctor_clinic WHERE clinic_id IN (?)`,
+      [ids]
+    );
 
     const response = clinics.map(c => ({
       ...c,
@@ -82,14 +63,9 @@ export const getClinicById = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const [[clinic]] = await pool.query(
-      `SELECT * FROM clinics WHERE id = ?`,
-      [id]
-    );
+    const [[clinic]] = await pool.query(`SELECT * FROM clinics WHERE id = ?`, [id]);
 
-    if (!clinic) {
-      return res.status(404).json({ error: "Clinic not found" });
-    }
+    if (!clinic) return res.status(404).json({ error: "Clinic not found" });
 
     const [specializations] = await pool.query(
       `SELECT cs.specialization_id AS id, s.name
@@ -162,25 +138,152 @@ export const getClinicById = async (req, res) => {
 };
 
 
+// export const createClinic = async (req, res) => {
+//   let imageKey = null;
+
+//   try {
+//     /* ------------------ IMAGE ------------------ */
+//     let imageUrl = null;
+//     if (req.file) {
+//       const uploaded = await uploadImageToS3(req.file, "clinics");
+//       imageUrl = uploaded.imageUrl;
+//       imageKey = uploaded.fileKey;
+//     }
+
+//     const body = req.body || {};
+
+//     /* ------------------ SLUG ------------------ */
+//     const baseSlug = body.name
+//       .toLowerCase()
+//       .replace(/[^a-z0-9\s-]/g, "")
+//       .trim()
+//       .replace(/\s+/g, "-");
+
+//     let slug = baseSlug;
+//     let counter = 1;
+
+//     while (true) {
+//       const [[exists]] = await pool.query(
+//         `SELECT id FROM clinics WHERE slug = ? LIMIT 1`,
+//         [slug]
+//       );
+//       if (!exists) break;
+//       slug = `${baseSlug}-${counter++}`;
+//     }
+
+//     /* ------------------ NORMALIZE ------------------ */
+//     const normalize = (v) => {
+//       if (!v) return [];
+//       if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+//       if (typeof v === "string")
+//         return v.split(",").map(x => Number(x.trim())).filter(Boolean);
+//       return [];
+//     };
+
+//     const specializations = normalize(body.specializations);
+//     const services = normalize(body.services);
+//     const procedures = normalize(body.procedures);
+//     const symptoms = normalize(body.symptoms);
+//     const doctors = normalize(body.doctors);
+
+//     /* ------------------ INSERT CLINIC ------------------ */
+//     const [result] = await pool.query(
+//       `INSERT INTO clinics
+//        (name, slug, timing, short_description, about,
+//         image_url, image_key,
+//         phone_1, phone_2, website, address,
+//         city_id, area_id, status,
+//         seo_title, seo_keywords, seo_description, json_schema)
+//        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         body.name || "",
+//         slug,
+//         body.timing || null,
+//         body.short_description || null,
+//         body.about || null,
+//         imageUrl,
+//         imageKey,
+//         body.phone_1 || null,
+//         body.phone_2 || null,
+//         body.website || null,
+//         body.address || null,
+//         body.city_id ? Number(body.city_id) : null,
+//         body.area_id ? Number(body.area_id) : null,
+//         body.status || "active",
+//         body.seo_title || null,
+//         body.seo_keywords || null,
+//         body.seo_description || null,
+//         body.json_schema || null,
+//       ]
+//     );
+
+//     const clinicId = result.insertId;
+
+//     /* ------------------ SPECIALIZATIONS ------------------ */
+//     if (specializations.length) {
+//       const values = specializations.map((sid, idx) => [
+//         clinicId,
+//         sid,
+//         idx === 0 ? 1 : 0
+//       ]);
+
+//       await pool.query(
+//         `INSERT INTO clinic_specialization
+//          (clinic_id, specialization_id, is_primary)
+//          VALUES ?`,
+//         [values]
+//       );
+//     }
+
+//     /* ------------------ OTHER RELATIONS ------------------ */
+//     const insertMany = async (table, col, ids) => {
+//       if (!ids.length) return;
+//       const rows = ids.map(x => [clinicId, x]);
+//       await pool.query(
+//         `INSERT INTO ${table} (clinic_id, ${col}) VALUES ?`,
+//         [rows]
+//       );
+//     };
+
+//     await insertMany("clinic_service", "service_id", services);
+//     await insertMany("clinic_procedure", "procedure_id", procedures);
+//     await insertMany("clinic_symptom", "symptom_id", symptoms);
+
+//     /* ------------------ DOCTOR ↔ CLINIC ------------------ */
+//     if (doctors.length) {
+//       const values = doctors.map((did, idx) => [
+//         did,
+//         clinicId,
+//         idx === 0 ? 1 : 0,
+//         body.consultation_fee || null,
+//         null,
+//         null,
+//       ]);
+
+//       await pool.query(
+//         `INSERT INTO doctor_clinic
+//          (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
+//          VALUES ?`,
+//         [values]
+//       );
+//     }
+
+//     res.status(201).json({ id: clinicId, slug });
+
+//   } catch (err) {
+//     console.error("❌ createClinic Error:", err);
+//     if (imageKey) await deleteFromS3(imageKey);
+//     res.status(500).json({ error: "Failed to create clinic" });
+//   }
+// };
 
 
-
-/**
- * POST /api/clinics
- * Practo-style clinic creation (slug auto-generated)
- */
 export const createClinic = async (req, res) => {
-  const connection = await pool.getConnection();
+  let imageKey = null;
 
   try {
-    await connection.beginTransaction();
-
-    // -----------------------------
-    // Image upload
-    // -----------------------------
+    /* ------------------ IMAGE ------------------ */
     let imageUrl = null;
-    let imageKey = null;
-
     if (req.file) {
       const uploaded = await uploadImageToS3(req.file, "clinics");
       imageUrl = uploaded.imageUrl;
@@ -189,9 +292,7 @@ export const createClinic = async (req, res) => {
 
     const body = req.body || {};
 
-    // -----------------------------
-    // Slug generation (AUTO)
-    // -----------------------------
+    /* ------------------ SLUG ------------------ */
     const baseSlug = body.name
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, "")
@@ -202,7 +303,7 @@ export const createClinic = async (req, res) => {
     let counter = 1;
 
     while (true) {
-      const [[exists]] = await connection.query(
+      const [[exists]] = await pool.query(
         `SELECT id FROM clinics WHERE slug = ? LIMIT 1`,
         [slug]
       );
@@ -210,15 +311,13 @@ export const createClinic = async (req, res) => {
       slug = `${baseSlug}-${counter++}`;
     }
 
-    // -----------------------------
-    // Normalize arrays
-    // -----------------------------
-    const normalize = (v) =>
-      !v
-        ? []
-        : Array.isArray(v)
-        ? v.map(Number).filter(Boolean)
-        : v.split(",").map(x => Number(x.trim())).filter(Boolean);
+    /* ------------------ NORMALIZE ------------------ */
+    const normalize = (v) => {
+      if (!v) return [];
+      if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+      if (typeof v === "string") return v.split(",").map(Number).filter(Boolean);
+      return [];
+    };
 
     const specializations = normalize(body.specializations);
     const services = normalize(body.services);
@@ -226,19 +325,15 @@ export const createClinic = async (req, res) => {
     const symptoms = normalize(body.symptoms);
     const doctors = normalize(body.doctors);
 
-    // -----------------------------
-    // Insert clinic
-    // -----------------------------
-    const [result] = await connection.query(
-      `
-      INSERT INTO clinics
-      (name, slug, timing, short_description, about,
-       image_url, image_key,
-       phone_1, phone_2, website, address,
-       city_id, area_id, status,
-       seo_title, seo_keywords, seo_description, json_schema)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
+    /* ------------------ INSERT CLINIC ------------------ */
+    const [result] = await pool.query(
+      `INSERT INTO clinics
+       (name, slug, timing, short_description, about,
+        image_url, image_key,
+        phone_1, phone_2, website, address,
+        city_id, area_id, status,
+        seo_title, seo_keywords, seo_description, json_schema)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.name || "",
         slug,
@@ -263,80 +358,279 @@ export const createClinic = async (req, res) => {
 
     const clinicId = result.insertId;
 
-    // -----------------------------
-    // Mapping tables
-    // -----------------------------
-    const insertMany = async (table, col, ids) => {
-      if (!ids.length) return;
-      await connection.query(
-        `INSERT INTO ${table} (clinic_id, ${col}) VALUES ?`,
-        [ids.map(x => [clinicId, x])]
+    /* ------------------ SPECIALIZATIONS ------------------ */
+    if (specializations.length) {
+      const placeholders = specializations.map(() => "(?, ?, ?)").join(",");
+      const values = specializations.flatMap((sid, idx) => [
+        clinicId,
+        sid,
+        idx === 0 ? 1 : 0,
+      ]);
+
+      await pool.query(
+        `INSERT INTO clinic_specialization
+         (clinic_id, specialization_id, is_primary)
+         VALUES ${placeholders}`,
+        values
       );
-    };
+    }
 
-    await insertMany("clinic_specialization", "specialization_id", specializations);
-    await insertMany("clinic_service", "service_id", services);
-    await insertMany("clinic_procedure", "procedure_id", procedures);
-    await insertMany("clinic_symptom", "symptom_id", symptoms);
-    await insertMany("doctor_clinic", "doctor_id", doctors);
+    /* ------------------ SERVICES ------------------ */
+    if (services.length) {
+      const placeholders = services.map(() => "(?, ?)").join(",");
+      const values = services.flatMap((sid) => [clinicId, sid]);
 
-    await connection.commit();
+      await pool.query(
+        `INSERT INTO clinic_service (clinic_id, service_id)
+         VALUES ${placeholders}`,
+        values
+      );
+    }
 
-    res.status(201).json({
-      id: clinicId,
-      slug
-    });
+    /* ------------------ PROCEDURES ------------------ */
+    if (procedures.length) {
+      const placeholders = procedures.map(() => "(?, ?)").join(",");
+      const values = procedures.flatMap((pid) => [clinicId, pid]);
+
+      await pool.query(
+        `INSERT INTO clinic_procedure (clinic_id, procedure_id)
+         VALUES ${placeholders}`,
+        values
+      );
+    }
+
+    /* ------------------ SYMPTOMS ------------------ */
+    if (symptoms.length) {
+      const placeholders = symptoms.map(() => "(?, ?)").join(",");
+      const values = symptoms.flatMap((sid) => [clinicId, sid]);
+
+      await pool.query(
+        `INSERT INTO clinic_symptom (clinic_id, symptom_id)
+         VALUES ${placeholders}`,
+        values
+      );
+    }
+
+    /* ------------------ DOCTOR ↔ CLINIC ------------------ */
+    if (doctors.length) {
+      const placeholders = doctors.map(() => "(?, ?, ?, ?, ?, ?)").join(",");
+      const values = doctors.flatMap((did, idx) => [
+        did,
+        clinicId,
+        idx === 0 ? 1 : 0,
+        body.consultation_fee || null,
+        null,
+        null,
+      ]);
+
+      await pool.query(
+        `INSERT INTO doctor_clinic
+         (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
+         VALUES ${placeholders}`,
+        values
+      );
+    }
+
+    res.status(201).json({ id: clinicId, slug });
 
   } catch (err) {
-    await connection.rollback();
     console.error("❌ createClinic Error:", err);
+    if (imageKey) await deleteFromS3(imageKey);
     res.status(500).json({ error: "Failed to create clinic" });
-  } finally {
-    connection.release();
   }
 };
 
 
+
+
 /**
  * PUT /api/clinics/:id
- * Practo-style clinic update (slug regenerates only if name changes)
+ * Update clinic
  */
+// export const updateClinic = async (req, res) => {
+//   const { id } = req.params;
+//   let newImageKey = null;
+
+//   try {
+//     const [[existing]] = await pool.query(
+//       `SELECT name, slug, image_key FROM clinics WHERE id = ?`,
+//       [id]
+//     );
+
+//     if (!existing) {
+//       return res.status(404).json({ error: "Clinic not found" });
+//     }
+
+//     const body = req.body || {};
+
+//     /* ------------------ SLUG ------------------ */
+//     let slug = existing.slug;
+//     if (body.name && body.name !== existing.name) {
+//       const baseSlug = body.name
+//         .toLowerCase()
+//         .replace(/[^a-z0-9\s-]/g, "")
+//         .trim()
+//         .replace(/\s+/g, "-");
+
+//       slug = baseSlug;
+//       let counter = 1;
+
+//       while (true) {
+//         const [[exists]] = await pool.query(
+//           `SELECT id FROM clinics WHERE slug = ? AND id != ? LIMIT 1`,
+//           [slug, id]
+//         );
+//         if (!exists) break;
+//         slug = `${baseSlug}-${counter++}`;
+//       }
+//     }
+
+//     /* ------------------ IMAGE ------------------ */
+//     let imageUrl = null;
+//     if (req.file) {
+//       const uploaded = await uploadImageToS3(req.file, "clinics");
+//       imageUrl = uploaded.imageUrl;
+//       newImageKey = uploaded.fileKey;
+//     }
+
+//     /* ------------------ UPDATE CLINIC ------------------ */
+//     await pool.query(
+//       `UPDATE clinics SET
+//         name = ?, slug = ?,
+//         timing = ?, short_description = ?, about = ?,
+//         phone_1 = ?, phone_2 = ?, website = ?, address = ?,
+//         city_id = ?, area_id = ?, status = ?,
+//         seo_title = ?, seo_keywords = ?, seo_description = ?, json_schema = ?
+//         ${imageUrl ? ", image_url = ?, image_key = ?" : ""}
+//        WHERE id = ?`,
+//       [
+//         body.name || existing.name,
+//         slug,
+//         body.timing || null,
+//         body.short_description || null,
+//         body.about || null,
+//         body.phone_1 || null,
+//         body.phone_2 || null,
+//         body.website || null,
+//         body.address || null,
+//         body.city_id ? Number(body.city_id) : null,
+//         body.area_id ? Number(body.area_id) : null,
+//         body.status || "active",
+//         body.seo_title || null,
+//         body.seo_keywords || null,
+//         body.seo_description || null,
+//         body.json_schema || null,
+//         ...(imageUrl ? [imageUrl, newImageKey] : []),
+//         id
+//       ]
+//     );
+
+//     /* ------------------ NORMALIZE ------------------ */
+//     const normalize = (v) => {
+//       if (v === undefined) return undefined;
+//       if (!v) return [];
+//       if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+//       if (typeof v === "string")
+//         return v.split(",").map(x => Number(x.trim())).filter(Boolean);
+//       return [];
+//     };
+
+//     /* ------------------ SPECIALIZATIONS ------------------ */
+//     const specializations = normalize(body.specializations);
+//     if (specializations !== undefined) {
+//       await pool.query(`DELETE FROM clinic_specialization WHERE clinic_id = ?`, [id]);
+
+//       if (specializations.length) {
+//         const values = specializations.map((sid, idx) => [
+//           id,
+//           sid,
+//           idx === 0 ? 1 : 0
+//         ]);
+
+//         await pool.query(
+//           `INSERT INTO clinic_specialization
+//            (clinic_id, specialization_id, is_primary)
+//            VALUES ?`,
+//           [values]
+//         );
+//       }
+//     }
+
+//     /* ------------------ OTHER RELATIONS ------------------ */
+//     const replaceRelations = async (table, col, values) => {
+//       if (values === undefined) return;
+//       await pool.query(`DELETE FROM ${table} WHERE clinic_id = ?`, [id]);
+//       if (!values.length) return;
+//       const rows = values.map(v => [id, v]);
+//       await pool.query(
+//         `INSERT INTO ${table} (clinic_id, ${col}) VALUES ?`,
+//         [rows]
+//       );
+//     };
+
+//     await replaceRelations("clinic_service", "service_id", normalize(body.services));
+//     await replaceRelations("clinic_procedure", "procedure_id", normalize(body.procedures));
+//     await replaceRelations("clinic_symptom", "symptom_id", normalize(body.symptoms));
+
+//     /* ------------------ DOCTOR ↔ CLINIC ------------------ */
+//     const doctors = normalize(body.doctors);
+//     if (doctors !== undefined) {
+//       await pool.query(`DELETE FROM doctor_clinic WHERE clinic_id = ?`, [id]);
+
+//       if (doctors.length) {
+//         const rows = doctors.map((did, idx) => [
+//           did,
+//           id,
+//           idx === 0 ? 1 : 0,
+//           body.consultation_fee || null,
+//           null,
+//           null
+//         ]);
+
+//         await pool.query(
+//           `INSERT INTO doctor_clinic
+//            (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
+//            VALUES ?`,
+//           [rows]
+//         );
+//       }
+//     }
+
+//     /* ------------------ CLEAN OLD IMAGE ------------------ */
+//     if (newImageKey && existing.image_key && existing.image_key !== newImageKey) {
+//       await deleteFromS3(existing.image_key);
+//     }
+
+//     res.json({ ok: true, slug });
+
+//   } catch (err) {
+//     console.error("❌ updateClinic Error:", err);
+//     if (newImageKey) await deleteFromS3(newImageKey);
+//     res.status(500).json({ error: "Failed to update clinic" });
+//   }
+// };
+
+
+
 export const updateClinic = async (req, res) => {
   const { id } = req.params;
-  const connection = await pool.getConnection();
+  let newImageKey = null;
 
   try {
-    await connection.beginTransaction();
-
-    const [[existing]] = await connection.query(
-      `SELECT name, image_key FROM clinics WHERE id = ?`,
+    /* ------------------ FETCH EXISTING ------------------ */
+    const [[existing]] = await pool.query(
+      `SELECT name, slug, image_key FROM clinics WHERE id = ?`,
       [id]
     );
 
     if (!existing) {
-      await connection.rollback();
       return res.status(404).json({ error: "Clinic not found" });
-    }
-
-    // -----------------------------
-    // Image upload
-    // -----------------------------
-    let newImageUrl = null;
-    let newImageKey = null;
-
-    if (req.file) {
-      const uploaded = await uploadImageToS3(req.file, "clinics");
-      newImageUrl = uploaded.imageUrl;
-      newImageKey = uploaded.fileKey;
     }
 
     const body = req.body || {};
 
-    // -----------------------------
-    // Slug regeneration (only if name changed)
-    // -----------------------------
-    let slug = null;
-
+    /* ------------------ SLUG ------------------ */
+    let slug = existing.slug;
     if (body.name && body.name !== existing.name) {
       const baseSlug = body.name
         .toLowerCase()
@@ -348,7 +642,7 @@ export const updateClinic = async (req, res) => {
       let counter = 1;
 
       while (true) {
-        const [[exists]] = await connection.query(
+        const [[exists]] = await pool.query(
           `SELECT id FROM clinics WHERE slug = ? AND id != ? LIMIT 1`,
           [slug, id]
         );
@@ -357,40 +651,27 @@ export const updateClinic = async (req, res) => {
       }
     }
 
-    // -----------------------------
-    // Normalize arrays
-    // -----------------------------
-    const normalize = (v) =>
-      !v
-        ? []
-        : Array.isArray(v)
-        ? v.map(Number).filter(Boolean)
-        : v.split(",").map(x => Number(x.trim())).filter(Boolean);
+    /* ------------------ IMAGE ------------------ */
+    let imageUrl = null;
+    if (req.file) {
+      const uploaded = await uploadImageToS3(req.file, "clinics");
+      imageUrl = uploaded.imageUrl;
+      newImageKey = uploaded.fileKey;
+    }
 
-    const specializations = normalize(body.specializations);
-    const services = normalize(body.services);
-    const procedures = normalize(body.procedures);
-    const symptoms = normalize(body.symptoms);
-    const doctors = normalize(body.doctors);
-
-    // -----------------------------
-    // Update clinic
-    // -----------------------------
-    await connection.query(
-      `
-      UPDATE clinics SET
-        name = ?,
-        ${slug ? "slug = ?," : ""}
+    /* ------------------ UPDATE CLINIC ------------------ */
+    await pool.query(
+      `UPDATE clinics SET
+        name = ?, slug = ?,
         timing = ?, short_description = ?, about = ?,
         phone_1 = ?, phone_2 = ?, website = ?, address = ?,
         city_id = ?, area_id = ?, status = ?,
         seo_title = ?, seo_keywords = ?, seo_description = ?, json_schema = ?
-        ${newImageUrl ? ", image_url = ?, image_key = ?" : ""}
-      WHERE id = ?
-      `,
+        ${imageUrl ? ", image_url = ?, image_key = ?" : ""}
+       WHERE id = ?`,
       [
         body.name || existing.name,
-        ...(slug ? [slug] : []),
+        slug,
         body.timing || null,
         body.short_description || null,
         body.about || null,
@@ -405,54 +686,129 @@ export const updateClinic = async (req, res) => {
         body.seo_keywords || null,
         body.seo_description || null,
         body.json_schema || null,
-        ...(newImageUrl ? [newImageUrl, newImageKey] : []),
-        id
+        ...(imageUrl ? [imageUrl, newImageKey] : []),
+        id,
       ]
     );
 
-    // -----------------------------
-    // Reset mappings
-    // -----------------------------
-    const reset = (table) =>
-      connection.query(`DELETE FROM ${table} WHERE clinic_id = ?`, [id]);
-
-    await reset("clinic_specialization");
-    await reset("clinic_service");
-    await reset("clinic_procedure");
-    await reset("clinic_symptom");
-    await reset("doctor_clinic");
-
-    const insertMany = async (table, col, ids) => {
-      if (!ids.length) return;
-      await connection.query(
-        `INSERT INTO ${table} (clinic_id, ${col}) VALUES ?`,
-        [ids.map(x => [id, x])]
-      );
+    /* ------------------ NORMALIZE ------------------ */
+    const normalize = (v) => {
+      if (v === undefined) return undefined;
+      if (!v) return [];
+      if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+      if (typeof v === "string") return v.split(",").map(Number).filter(Boolean);
+      return [];
     };
 
-    await insertMany("clinic_specialization", "specialization_id", specializations);
-    await insertMany("clinic_service", "service_id", services);
-    await insertMany("clinic_procedure", "procedure_id", procedures);
-    await insertMany("clinic_symptom", "symptom_id", symptoms);
-    await insertMany("doctor_clinic", "doctor_id", doctors);
+    /* ------------------ SPECIALIZATIONS ------------------ */
+    const specializations = normalize(body.specializations);
+    if (specializations !== undefined) {
+      await pool.query(`DELETE FROM clinic_specialization WHERE clinic_id = ?`, [id]);
 
-    await connection.commit();
+      if (specializations.length) {
+        const placeholders = specializations.map(() => "(?, ?, ?)").join(",");
+        const values = specializations.flatMap((sid, idx) => [
+          id,
+          sid,
+          idx === 0 ? 1 : 0,
+        ]);
 
+        await pool.query(
+          `INSERT INTO clinic_specialization
+           (clinic_id, specialization_id, is_primary)
+           VALUES ${placeholders}`,
+          values
+        );
+      }
+    }
+
+    /* ------------------ SERVICES ------------------ */
+    const services = normalize(body.services);
+    if (services !== undefined) {
+      await pool.query(`DELETE FROM clinic_service WHERE clinic_id = ?`, [id]);
+
+      if (services.length) {
+        const placeholders = services.map(() => "(?, ?)").join(",");
+        const values = services.flatMap((sid) => [id, sid]);
+
+        await pool.query(
+          `INSERT INTO clinic_service (clinic_id, service_id)
+           VALUES ${placeholders}`,
+          values
+        );
+      }
+    }
+
+    /* ------------------ PROCEDURES ------------------ */
+    const procedures = normalize(body.procedures);
+    if (procedures !== undefined) {
+      await pool.query(`DELETE FROM clinic_procedure WHERE clinic_id = ?`, [id]);
+
+      if (procedures.length) {
+        const placeholders = procedures.map(() => "(?, ?)").join(",");
+        const values = procedures.flatMap((pid) => [id, pid]);
+
+        await pool.query(
+          `INSERT INTO clinic_procedure (clinic_id, procedure_id)
+           VALUES ${placeholders}`,
+          values
+        );
+      }
+    }
+
+    /* ------------------ SYMPTOMS ------------------ */
+    const symptoms = normalize(body.symptoms);
+    if (symptoms !== undefined) {
+      await pool.query(`DELETE FROM clinic_symptom WHERE clinic_id = ?`, [id]);
+
+      if (symptoms.length) {
+        const placeholders = symptoms.map(() => "(?, ?)").join(",");
+        const values = symptoms.flatMap((sid) => [id, sid]);
+
+        await pool.query(
+          `INSERT INTO clinic_symptom (clinic_id, symptom_id)
+           VALUES ${placeholders}`,
+          values
+        );
+      }
+    }
+
+    /* ------------------ DOCTOR ↔ CLINIC ------------------ */
+    const doctors = normalize(body.doctors);
+    if (doctors !== undefined) {
+      await pool.query(`DELETE FROM doctor_clinic WHERE clinic_id = ?`, [id]);
+
+      if (doctors.length) {
+        const placeholders = doctors.map(() => "(?, ?, ?, ?, ?, ?)").join(",");
+        const values = doctors.flatMap((did, idx) => [
+          did,
+          id,
+          idx === 0 ? 1 : 0,
+          body.consultation_fee || null,
+          null,
+          null,
+        ]);
+
+        await pool.query(
+          `INSERT INTO doctor_clinic
+           (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
+           VALUES ${placeholders}`,
+          values
+        );
+      }
+    }
+
+    /* ------------------ CLEAN OLD IMAGE ------------------ */
     if (newImageKey && existing.image_key && existing.image_key !== newImageKey) {
       await deleteFromS3(existing.image_key);
     }
 
-    res.json({
-      ok: true,
-      slug: slug || undefined
-    });
+    res.json({ ok: true, slug });
 
   } catch (err) {
-    await connection.rollback();
     console.error("❌ updateClinic Error:", err);
+    if (newImageKey) await deleteFromS3(newImageKey);
     res.status(500).json({ error: "Failed to update clinic" });
-  } finally {
-    connection.release();
   }
 };
 
@@ -465,76 +821,24 @@ export const deleteClinic = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const connection = await pool.getConnection();
+    const [[clinic]] = await pool.query(`SELECT image_key FROM clinics WHERE id = ?`, [id]);
+    if (!clinic) return res.status(404).json({ error: "Clinic not found" });
 
-    try {
-      await connection.beginTransaction();
+    const imageKey = clinic.image_key;
 
-      // 1️⃣ Fetch image_key first
-      const [[clinic]] = await connection.query(
-        `SELECT image_key FROM clinics WHERE id = ?`,
-        [id]
-      );
+    // Delete relations
+    const tables = ["clinic_specialization", "clinic_service", "clinic_procedure", "clinic_symptom", "doctor_clinic"];
+    for (const t of tables) await pool.query(`DELETE FROM ${t} WHERE clinic_id = ?`, [id]);
 
-      if (!clinic) {
-        await connection.rollback();
-        return res.status(404).json({ error: "Clinic not found" });
-      }
+    // Delete clinic
+    await pool.query(`DELETE FROM clinics WHERE id = ?`, [id]);
 
-      const imageKey = clinic.image_key;
+    if (imageKey) await deleteFromS3(imageKey);
 
-      // 2️⃣ Delete relation tables
-      await connection.query(
-        `DELETE FROM clinic_specialization WHERE clinic_id = ?`,
-        [id]
-      );
-
-      await connection.query(
-        `DELETE FROM clinic_service WHERE clinic_id = ?`,
-        [id]
-      );
-
-      await connection.query(
-        `DELETE FROM clinic_procedure WHERE clinic_id = ?`,
-        [id]
-      );
-
-      await connection.query(
-        `DELETE FROM clinic_symptom WHERE clinic_id = ?`,
-        [id]
-      );
-
-      // doctor ↔ clinic mapping
-      await connection.query(
-        `DELETE FROM doctor_clinic WHERE clinic_id = ?`,
-        [id]
-      );
-
-      // 3️⃣ Delete clinic itself
-      await connection.query(
-        `DELETE FROM clinics WHERE id = ?`,
-        [id]
-      );
-
-      await connection.commit();
-
-      // 4️⃣ Delete image from S3 AFTER commit
-      if (imageKey) {
-        await deleteFromS3(imageKey);
-      }
-
-      res.json({ ok: true });
-
-    } catch (err) {
-      await connection.rollback();
-      console.error("❌ deleteClinic Error:", err);
-      res.status(500).json({ error: "Failed to delete clinic" });
-    } finally {
-      connection.release();
-    }
+    res.json({ ok: true });
 
   } catch (err) {
-    console.error("❌ deleteClinic Connection Error:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ deleteClinic Error:", err);
+    res.status(500).json({ error: "Failed to delete clinic" });
   }
 };

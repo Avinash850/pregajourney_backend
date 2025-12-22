@@ -43,7 +43,7 @@ export const getEnquiryById = async (req, res) => {
 
 export const createEnquiry = async (req, res) => {
   try {
-    const { name, mobile, city, service, message, email } = req.body;
+    const { name, mobile, city, service, message, email, page_url  } = req.body;
 
     // Basic validation
     if (!name || !mobile || !service) {
@@ -55,9 +55,18 @@ export const createEnquiry = async (req, res) => {
 
     // Insert into DB
     const [result] = await pool.query(
-      `INSERT INTO enquiries (name, phone, email, city, service, message, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [name, mobile, email || null, city || null, service, message || null]
+      `INSERT INTO enquiries 
+      (name, phone, email, city, service, message, page_url, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        name,
+        mobile,
+        email || null,
+        city || null,
+        service,
+        message || null,
+        page_url || null, 
+      ]
     );
 
     const enquiryId = result.insertId;
