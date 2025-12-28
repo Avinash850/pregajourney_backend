@@ -40,104 +40,171 @@ const generateUniqueDoctorSlug = async (doctorName, specializationName, excludeD
    ===================================================== */
 export const getDoctors = async (req, res) => {
   try {
-    const [doctors] = await pool.query(`SELECT * FROM doctors ORDER BY id DESC`);
-    if (doctors.length === 0) return res.json([]);
+    const { from_date, to_date } = req.query;
 
-    const doctorIds = doctors.map((d) => d.id);
+    /* ------------------ BUILD WHERE ------------------ */
+    const where = [];
+    const params = [];
 
-    const [specializations] = await pool.query(
-      `SELECT doctor_id, specialization_id AS id FROM doctor_specialization WHERE doctor_id IN (?)`,
-      [doctorIds]
-    );
-    const [clinics] = await pool.query(
-      `SELECT doctor_id, clinic_id AS id FROM doctor_clinic WHERE doctor_id IN (?)`,
-      [doctorIds]
-    );
-    const [hospitals] = await pool.query(
-      `SELECT doctor_id, hospital_id AS id FROM doctor_hospital WHERE doctor_id IN (?)`,
-      [doctorIds]
-    );
-    const [procedures] = await pool.query(
-      `SELECT doctor_id, procedure_id AS id FROM doctor_procedure WHERE doctor_id IN (?)`,
-      [doctorIds]
-    );
-    const [services] = await pool.query(
-      `SELECT doctor_id, service_id AS id FROM doctor_service WHERE doctor_id IN (?)`,
-      [doctorIds]
-    );
-    const [symptoms] = await pool.query(
-      `SELECT doctor_id, symptom_id AS id FROM doctor_symptom WHERE doctor_id IN (?)`,
-      [doctorIds]
+    if (from_date) {
+      where.push("created_at >= ?");
+      params.push(`${from_date} 00:00:00`);
+    }
+
+    if (to_date) {
+      where.push("created_at <= ?");
+      params.push(`${to_date} 23:59:59`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    /* ------------------ FETCH DOCTORS ------------------ */
+    const [doctors] = await pool.query(
+      `
+      SELECT
+       *
+      FROM doctors
+      ${whereSql}
+      ORDER BY created_at DESC
+      `,
+      params
     );
 
-    const response = doctors.map((doc) => ({
+    if (!doctors.length) return res.json([]);
+
+    const doctorIds = doctors.map(d => d.id);
+
+    /* ------------------ FETCH RELATIONS ------------------ */
+    const fetchRelation = (table, col) =>
+      pool.query(
+        `SELECT doctor_id, ${col} AS id FROM ${table} WHERE doctor_id IN (?)`,
+        [doctorIds]
+      );
+
+    const [
+      [specializations],
+      [clinics],
+      [hospitals],
+      [procedures],
+      [services],
+      [symptoms],
+    ] = await Promise.all([
+      fetchRelation("doctor_specialization", "specialization_id"),
+      fetchRelation("doctor_clinic", "clinic_id"),
+      fetchRelation("doctor_hospital", "hospital_id"),
+      fetchRelation("doctor_procedure", "procedure_id"),
+      fetchRelation("doctor_service", "service_id"),
+      fetchRelation("doctor_symptom", "symptom_id"),
+    ]);
+
+    /* ------------------ MAP RESPONSE ------------------ */
+    const response = doctors.map(doc => ({
       ...doc,
-      specializations: specializations.filter((x) => x.doctor_id === doc.id).map((x) => x.id),
-      clinics: clinics.filter((x) => x.doctor_id === doc.id).map((x) => x.id),
-      hospitals: hospitals.filter((x) => x.doctor_id === doc.id).map((x) => x.id),
-      procedures: procedures.filter((x) => x.doctor_id === doc.id).map((x) => x.id),
-      services: services.filter((x) => x.doctor_id === doc.id).map((x) => x.id),
-      symptoms: symptoms.filter((x) => x.doctor_id === doc.id).map((x) => x.id),
+      specializations: specializations.filter(x => x.doctor_id === doc.id).map(x => x.id),
+      clinics: clinics.filter(x => x.doctor_id === doc.id).map(x => x.id),
+      hospitals: hospitals.filter(x => x.doctor_id === doc.id).map(x => x.id),
+      procedures: procedures.filter(x => x.doctor_id === doc.id).map(x => x.id),
+      services: services.filter(x => x.doctor_id === doc.id).map(x => x.id),
+      symptoms: symptoms.filter(x => x.doctor_id === doc.id).map(x => x.id),
     }));
 
     res.json(response);
+
   } catch (err) {
     console.error("❌ getDoctors Error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
+
 /* =====================================================
    GET DOCTOR BY ID (with mapping names)
    ===================================================== */
 export const getDoctorById = async (req, res) => {
   const { id } = req.params;
+
   try {
-    const [[doctor]] = await pool.query(`SELECT * FROM doctors WHERE id = ?`, [id]);
-    if (!doctor) return res.status(404).json({ error: "Doctor not found" });
-
-    const [specializations] = await pool.query(
-      `SELECT s.id, s.name FROM doctor_specialization ds JOIN specializations s ON s.id = ds.specialization_id WHERE ds.doctor_id = ?`,
-      [id]
-    );
-    const [clinics] = await pool.query(
-      `SELECT c.id, c.name FROM doctor_clinic dc JOIN clinics c ON c.id = dc.clinic_id WHERE dc.doctor_id = ?`,
-      [id]
-    );
-    const [hospitals] = await pool.query(
-      `SELECT h.id, h.name FROM doctor_hospital dh JOIN hospitals h ON h.id = dh.hospital_id WHERE dh.doctor_id = ?`,
-      [id]
-    );
-    const [procedures] = await pool.query(
-      `SELECT p.id, p.name FROM doctor_procedure dp JOIN procedures p ON p.id = dp.procedure_id WHERE dp.doctor_id = ?`,
-      [id]
-    );
-    const [services] = await pool.query(
-      `SELECT s.id, s.name FROM doctor_service ds JOIN services s ON s.id = ds.service_id WHERE ds.doctor_id = ?`,
-      [id]
-    );
-    const [symptoms] = await pool.query(
-      `SELECT s.id, s.name FROM doctor_symptom dsy JOIN symptoms s ON s.id = dsy.symptom_id WHERE dsy.doctor_id = ?`,
+    /* ------------------ DOCTOR ------------------ */
+    const [[doctor]] = await pool.query(
+      `
+      SELECT
+        d.*,
+        c.name AS city_name,
+        a.name AS area_name
+      FROM doctors d
+      LEFT JOIN cities c ON c.id = d.city_id
+      LEFT JOIN areas a ON a.id = d.area_id
+      WHERE d.id = ?
+      `,
       [id]
     );
 
-    let city = null;
-    let area = null;
-    if (doctor.city_id) {
-      const [crows] = await pool.query(`SELECT id, name FROM cities WHERE id = ?`, [doctor.city_id]);
-      city = crows?.[0] ?? null;
-    }
-    if (doctor.area_id) {
-      const [arows] = await pool.query(`SELECT id, name, city_id FROM areas WHERE id = ?`, [doctor.area_id]);
-      area = arows?.[0] ?? null;
+    if (!doctor) {
+      return res.status(404).json({ error: "Doctor not found" });
     }
 
-    res.json({ ...doctor, specializations, clinics, hospitals, procedures, services, symptoms, city, area });
+    /* ------------------ RELATIONS (IDS ONLY) ------------------ */
+    const fetchIds = (table, col) =>
+      pool.query(
+        `SELECT ${col} AS id FROM ${table} WHERE doctor_id = ?`,
+        [id]
+      );
+
+    const [
+      [specializations],
+      [clinics],
+      [hospitals],
+      [procedures],
+      [services],
+      [symptoms],
+    ] = await Promise.all([
+      fetchIds("doctor_specialization", "specialization_id"),
+      fetchIds("doctor_clinic", "clinic_id"),
+      fetchIds("doctor_hospital", "hospital_id"),
+      fetchIds("doctor_procedure", "procedure_id"),
+      fetchIds("doctor_service", "service_id"),
+      fetchIds("doctor_symptom", "symptom_id"),
+    ]);
+
+    /* ------------------ IS ON CALL (FROM CLINICS) ------------------ */
+    const [[onCallRow]] = await pool.query(
+      `SELECT MAX(is_on_call) AS is_on_call FROM doctor_clinic WHERE doctor_id = ?`,
+      [id]
+    );
+
+    /* ------------------ RESPONSE ------------------ */
+    res.json({
+      ...doctor,
+
+      // NEW + EXISTING FIELDS (explicit, predictable)
+      gender: doctor.gender,
+      patients_count: doctor.patients_count,
+      is_profile_claimed: !!doctor.is_profile_claimed,
+      is_on_call: !!onCallRow?.is_on_call,
+
+      // RELATION ARRAYS (IDS ONLY — PERFECT FOR FORM)
+      specializations: specializations.map((x) => x.id),
+      clinics: clinics.map((x) => x.id),
+      hospitals: hospitals.map((x) => x.id),
+      procedures: procedures.map((x) => x.id),
+      services: services.map((x) => x.id),
+      symptoms: symptoms.map((x) => x.id),
+
+      // OPTIONAL OBJECTS (ADMIN VIEW)
+      city: doctor.city_id
+        ? { id: doctor.city_id, name: doctor.city_name }
+        : null,
+      area: doctor.area_id
+        ? { id: doctor.area_id, name: doctor.area_name }
+        : null,
+    });
+
   } catch (err) {
     console.error("❌ getDoctorById Error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
+
 
 /* =====================================================
    CREATE DOCTOR
@@ -155,6 +222,7 @@ export const createDoctor = async (req, res) => {
     }
 
     const body = req.body || {};
+
     const normalizeArray = (v) => {
       if (!v) return [];
       if (Array.isArray(v)) return v.map(Number).filter(Boolean);
@@ -172,10 +240,36 @@ export const createDoctor = async (req, res) => {
     /* ------------------ INSERT DOCTOR ------------------ */
     const [insert] = await pool.query(
       `INSERT INTO doctors
-      (name, designation, short_description, description, seo_title, seo_keywords, seo_description,
-       json_schema, image_url, image_key, city_id, area_id, status, consultation_fee, rating,
-       phone_1, phone_2, email, address, registration_number, degree, experience_years)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (
+        name,
+        designation,
+        short_description,
+        description,
+        seo_title,
+        seo_keywords,
+        seo_description,
+        json_schema,
+        image_url,
+        image_key,
+        city_id,
+        area_id,
+        status,
+        consultation_fee,
+        rating,
+        phone_1,
+        phone_2,
+        email,
+        address,
+        registration_number,
+        degree,
+        experience_years,
+        gender,
+        patients_count,
+        is_profile_claimed,
+        created_at,
+        created_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.name,
         body.designation || null,
@@ -198,7 +292,12 @@ export const createDoctor = async (req, res) => {
         body.address || null,
         body.registration_number || null,
         body.degree || null,
-        body.experience_years ? Number(body.experience_years) : null,
+        body.experience_years ? Number(body.experience_years) : 0,
+        body.gender || "male",
+        body.patients_count ? Number(body.patients_count) : 0, // TEMP: admin controlled
+        body.is_profile_claimed ? 1 : 0,
+        new Date(),        // ✅ created_at
+        "admin",    
       ]
     );
 
@@ -206,7 +305,10 @@ export const createDoctor = async (req, res) => {
 
     /* ------------------ SPECIALIZATIONS ------------------ */
     if (specializations.length) {
-      await pool.query(`DELETE FROM doctor_specialization WHERE doctor_id = ?`, [doctorId]);
+      await pool.query(
+        `DELETE FROM doctor_specialization WHERE doctor_id = ?`,
+        [doctorId]
+      );
 
       const values = specializations.map((sid, idx) => [
         doctorId,
@@ -216,7 +318,8 @@ export const createDoctor = async (req, res) => {
       ]);
 
       await pool.query(
-        `INSERT INTO doctor_specialization (doctor_id, specialization_id, is_primary, priority)
+        `INSERT INTO doctor_specialization
+         (doctor_id, specialization_id, is_primary, priority)
          VALUES ?`,
         [values]
       );
@@ -231,8 +334,15 @@ export const createDoctor = async (req, res) => {
       [doctorId]
     );
 
-    const slug = await generateUniqueDoctorSlug(body.name, primarySpec?.name);
-    await pool.query(`UPDATE doctors SET slug = ? WHERE id = ?`, [slug, doctorId]);
+    const slug = await generateUniqueDoctorSlug(
+      body.name,
+      primarySpec?.name
+    );
+
+    await pool.query(
+      `UPDATE doctors SET slug = ? WHERE id = ?`,
+      [slug, doctorId]
+    );
 
     /* ------------------ CLINICS ------------------ */
     if (clinics.length) {
@@ -243,11 +353,20 @@ export const createDoctor = async (req, res) => {
         body.consultation_fee || null,
         null,
         null,
+        body.is_on_call ? 1 : 0, // ADMIN CONTROLLED (TEMP)
       ]);
 
       await pool.query(
         `INSERT INTO doctor_clinic
-         (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
+         (
+           doctor_id,
+           clinic_id,
+           is_primary,
+           consultation_fee,
+           timings,
+           practice_address,
+           is_on_call
+         )
          VALUES ?`,
         [values]
       );
@@ -265,11 +384,14 @@ export const createDoctor = async (req, res) => {
       );
     }
 
-    /* ------------------ OTHERS ------------------ */
+    /* ------------------ OTHER RELATIONS ------------------ */
     const insertMany = async (table, col, ids) => {
       if (!ids.length) return;
       const values = ids.map((id) => [doctorId, id]);
-      await pool.query(`INSERT INTO ${table} (doctor_id, ${col}) VALUES ?`, [values]);
+      await pool.query(
+        `INSERT INTO ${table} (doctor_id, ${col}) VALUES ?`,
+        [values]
+      );
     };
 
     await insertMany("doctor_procedure", "procedure_id", procedures);
@@ -284,6 +406,7 @@ export const createDoctor = async (req, res) => {
     res.status(500).json({ error: "Failed to create doctor" });
   }
 };
+
 
 
 /* =====================================================
@@ -317,34 +440,59 @@ export const updateDoctor = async (req, res) => {
     /* ------------------ UPDATE MAIN DOCTOR ------------------ */
     await pool.query(
       `UPDATE doctors SET
-        name = ?, designation = ?, short_description = ?, description = ?,
-        seo_title = ?, seo_keywords = ?, seo_description = ?, json_schema = ?,
-        city_id = ?, area_id = ?, status = ?, consultation_fee = ?, rating = ?,
-        phone_1 = ?, phone_2 = ?, email = ?, address = ?, registration_number = ?,
-        degree = ?, experience_years = ?
+        name = ?,
+        designation = ?,
+        short_description = ?,
+        description = ?,
+        seo_title = ?,
+        seo_keywords = ?,
+        seo_description = ?,
+        json_schema = ?,
+        city_id = ?,
+        area_id = ?,
+        status = ?,
+        consultation_fee = ?,
+        rating = ?,
+        phone_1 = ?,
+        phone_2 = ?,
+        email = ?,
+        address = ?,
+        registration_number = ?,
+        degree = ?,
+        experience_years = ?,
+        gender = ?,
+        patients_count = ?,
+        is_profile_claimed = ?,
+        updated_at = ?,
+        updated_by = ?
         ${newImageUrl ? ", image_url = ?, image_key = ?" : ""}
       WHERE id = ?`,
       [
         body.name || existing.name,
-        body.designation || null,
-        body.short_description || null,
-        body.description || null,
-        body.seo_title || null,
-        body.seo_keywords || null,
-        body.seo_description || null,
-        body.json_schema || null,
+        body.designation ?? null,
+        body.short_description ?? null,
+        body.description ?? null,
+        body.seo_title ?? null,
+        body.seo_keywords ?? null,
+        body.seo_description ?? null,
+        body.json_schema ?? null,
         body.city_id ? Number(body.city_id) : null,
         body.area_id ? Number(body.area_id) : null,
         body.status || "active",
         body.consultation_fee ? Number(body.consultation_fee) : 0,
         body.rating ? Number(body.rating) : 0,
-        body.phone_1 || null,
-        body.phone_2 || null,
-        body.email || null,
-        body.address || null,
-        body.registration_number || null,
-        body.degree || null,
-        body.experience_years ? Number(body.experience_years) : null,
+        body.phone_1 ?? null,
+        body.phone_2 ?? null,
+        body.email ?? null,
+        body.address ?? null,
+        body.registration_number ?? null,
+        body.degree ?? null,
+        body.experience_years ? Number(body.experience_years) : 0,
+        body.gender || "male",
+        body.patients_count ? Number(body.patients_count) : 0, // TEMP
+        body.is_profile_claimed ? 1 : 0,
+        new Date(),
+        'admin',
         ...(newImageUrl ? [newImageUrl, newImageKey] : []),
         id,
       ]
@@ -362,7 +510,10 @@ export const updateDoctor = async (req, res) => {
     /* ------------------ SPECIALIZATIONS ------------------ */
     const specializations = normalizeArray(body.specializations);
     if (specializations !== undefined) {
-      await pool.query(`DELETE FROM doctor_specialization WHERE doctor_id = ?`, [id]);
+      await pool.query(
+        `DELETE FROM doctor_specialization WHERE doctor_id = ?`,
+        [id]
+      );
 
       if (specializations.length) {
         const values = specializations.map((sid, idx) => [
@@ -432,11 +583,12 @@ export const updateDoctor = async (req, res) => {
           body.consultation_fee || null,
           null,
           null,
+          body.is_on_call ? 1 : 0, // TEMP admin control
         ]);
 
         await pool.query(
           `INSERT INTO doctor_clinic
-           (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
+           (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address, is_on_call)
            VALUES ?`,
           [values]
         );
@@ -469,7 +621,6 @@ export const updateDoctor = async (req, res) => {
   } catch (err) {
     console.error("❌ updateDoctor:", err);
 
-    // cleanup NEW image if DB failed
     if (newImageKey) {
       await deleteFromS3(newImageKey);
     }
@@ -477,6 +628,7 @@ export const updateDoctor = async (req, res) => {
     res.status(500).json({ error: "Failed to update doctor" });
   }
 };
+
 
 
 
@@ -498,19 +650,17 @@ export const deleteDoctor = async (req, res) => {
 
     const imageKey = doctor.image_key;
 
-    // Delete relations WITHOUT cascade
+    /* ------------------ DELETE NON-CASCADE RELATIONS ------------------ */
     await pool.query(`DELETE FROM doctor_specialization WHERE doctor_id = ?`, [id]);
     await pool.query(`DELETE FROM doctor_hospital WHERE doctor_id = ?`, [id]);
     await pool.query(`DELETE FROM doctor_procedure WHERE doctor_id = ?`, [id]);
     await pool.query(`DELETE FROM doctor_service WHERE doctor_id = ?`, [id]);
     await pool.query(`DELETE FROM doctor_symptom WHERE doctor_id = ?`, [id]);
 
-    // doctor_clinic has ON DELETE CASCADE → no need to delete manually
-
-    // Delete main doctor record
+    /* ------------------ DELETE DOCTOR (CASCADE HANDLES doctor_clinic) ------------------ */
     await pool.query(`DELETE FROM doctors WHERE id = ?`, [id]);
 
-    // Delete image only after DB success
+    /* ------------------ DELETE IMAGE AFTER DB SUCCESS ------------------ */
     if (imageKey) {
       await deleteFromS3(imageKey);
     }
@@ -522,4 +672,5 @@ export const deleteDoctor = async (req, res) => {
     res.status(500).json({ error: "Failed to delete doctor" });
   }
 };
+
 

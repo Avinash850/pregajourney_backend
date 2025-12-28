@@ -6,109 +6,151 @@ import deleteFromS3 from "../helpers/deleteFromS3.js";
    GET /api/hospitals
    Lightweight list + mapping IDs
    ===================================================== */
-export const getHospitals = async (req, res) => {
-  try {
-    const [hospitals] = await pool.query(`SELECT * FROM hospitals ORDER BY id DESC`);
-    if (!hospitals || hospitals.length === 0) return res.json([]);
+  export const getHospitals = async (req, res) => {
+    try {
+      const { from_date, to_date } = req.query;
 
-    const ids = hospitals.map(h => h.id);
+      const where = [];
+      const params = [];
 
-    const [specializations] = await pool.query(
-      `SELECT hospital_id, specialization_id AS id FROM hospital_specialization WHERE hospital_id IN (?)`, [ids]
-    );
-    // const [clinics] = await pool.query(
-    //   `SELECT hospital_id, clinic_id AS id FROM hospital_clinic WHERE hospital_id IN (?)`, [ids]
-    // );
-    const [services] = await pool.query(
-      `SELECT hospital_id, service_id AS id FROM hospital_service WHERE hospital_id IN (?)`, [ids]
-    );
-    const [procedures] = await pool.query(
-      `SELECT hospital_id, procedure_id AS id FROM hospital_procedure WHERE hospital_id IN (?)`, [ids]
-    );
-    const [symptoms] = await pool.query(
-      `SELECT hospital_id, symptom_id AS id FROM hospital_symptom WHERE hospital_id IN (?)`, [ids]
-    );
+      /* ---------------- SOFT DELETE FILTER ---------------- */
+      where.push(`deleted_at IS NULL`);
 
-    const response = hospitals.map(h => ({
-      ...h,
-      specializations: specializations.filter(x => x.hospital_id === h.id).map(x => x.id),
-      // clinics: clinics.filter(x => x.hospital_id === h.id).map(x => x.id),
-      services: services.filter(x => x.hospital_id === h.id).map(x => x.id),
-      procedures: procedures.filter(x => x.hospital_id === h.id).map(x => x.id),
-      symptoms: symptoms.filter(x => x.hospital_id === h.id).map(x => x.id),
-    }));
+      /* ---------------- DATE FILTER ---------------- */
+      if (from_date && to_date) {
+        where.push(`created_at BETWEEN ? AND ?`);
+        params.push(
+          `${from_date} 00:00:00`,
+          `${to_date} 23:59:59`
+        );
+      }
 
-    res.json(response);
+      const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-  } catch (err) {
-    console.error("❌ getHospitals Error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-};
+      /* ---------------- MAIN QUERY ---------------- */
+      const [hospitals] = await pool.query(
+        `SELECT * FROM hospitals ${whereSql} ORDER BY id DESC`,
+        params
+      );
+
+      if (!hospitals || hospitals.length === 0) {
+        return res.json([]);
+      }
+
+      const ids = hospitals.map(h => h.id);
+
+      /* ---------------- RELATIONS ---------------- */
+      const [specializations] = await pool.query(
+        `SELECT hospital_id, specialization_id AS id
+        FROM hospital_specialization
+        WHERE hospital_id IN (?)`,
+        [ids]
+      );
+
+      const [services] = await pool.query(
+        `SELECT hospital_id, service_id AS id
+        FROM hospital_service
+        WHERE hospital_id IN (?)`,
+        [ids]
+      );
+
+      const [procedures] = await pool.query(
+        `SELECT hospital_id, procedure_id AS id
+        FROM hospital_procedure
+        WHERE hospital_id IN (?)`,
+        [ids]
+      );
+
+      const [symptoms] = await pool.query(
+        `SELECT hospital_id, symptom_id AS id
+        FROM hospital_symptom
+        WHERE hospital_id IN (?)`,
+        [ids]
+      );
+
+      /* ---------------- FINAL RESPONSE ---------------- */
+      const response = hospitals.map(h => ({
+        ...h,
+        specializations: specializations.filter(x => x.hospital_id === h.id).map(x => x.id),
+        services: services.filter(x => x.hospital_id === h.id).map(x => x.id),
+        procedures: procedures.filter(x => x.hospital_id === h.id).map(x => x.id),
+        symptoms: symptoms.filter(x => x.hospital_id === h.id).map(x => x.id),
+      }));
+
+      res.json(response);
+
+    } catch (err) {
+      console.error("❌ getHospitals Error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  };
+
+
+
 
 /* =====================================================
    GET /api/hospitals/:id
    Full hospital details + relations
    ===================================================== */
-export const getHospitalById = async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [[hospital]] = await pool.query(`SELECT * FROM hospitals WHERE id = ?`, [id]);
-    if (!hospital) return res.status(404).json({ error: "Hospital not found" });
+  export const getHospitalById = async (req, res) => {
+    const { id } = req.params;
+    try {
+      const [[hospital]] = await pool.query(`SELECT * FROM hospitals WHERE id = ?`, [id]);
+      if (!hospital) return res.status(404).json({ error: "Hospital not found" });
 
-    const [specializations] = await pool.query(
-      `SELECT hs.specialization_id AS id, s.name
-       FROM hospital_specialization hs
-       JOIN specializations s ON s.id = hs.specialization_id
-       WHERE hs.hospital_id = ?`, [id]
-    );
+      const [specializations] = await pool.query(
+        `SELECT hs.specialization_id AS id, s.name
+        FROM hospital_specialization hs
+        JOIN specializations s ON s.id = hs.specialization_id
+        WHERE hs.hospital_id = ?`, [id]
+      );
 
-    const [services] = await pool.query(
-      `SELECT hs.service_id AS id, s.name
-       FROM hospital_service hs
-       JOIN services s ON s.id = hs.service_id
-       WHERE hs.hospital_id = ?`, [id]
-    );
+      const [services] = await pool.query(
+        `SELECT hs.service_id AS id, s.name
+        FROM hospital_service hs
+        JOIN services s ON s.id = hs.service_id
+        WHERE hs.hospital_id = ?`, [id]
+      );
 
-    const [procedures] = await pool.query(
-      `SELECT hp.procedure_id AS id, p.name
-       FROM hospital_procedure hp
-       JOIN procedures p ON p.id = hp.procedure_id
-       WHERE hp.hospital_id = ?`, [id]
-    );
+      const [procedures] = await pool.query(
+        `SELECT hp.procedure_id AS id, p.name
+        FROM hospital_procedure hp
+        JOIN procedures p ON p.id = hp.procedure_id
+        WHERE hp.hospital_id = ?`, [id]
+      );
 
-    const [symptoms] = await pool.query(
-      `SELECT hs.symptom_id AS id, s.name
-       FROM hospital_symptom hs
-       JOIN symptoms s ON s.id = hs.symptom_id
-       WHERE hs.hospital_id = ?`, [id]
-    );
+      const [symptoms] = await pool.query(
+        `SELECT hs.symptom_id AS id, s.name
+        FROM hospital_symptom hs
+        JOIN symptoms s ON s.id = hs.symptom_id
+        WHERE hs.hospital_id = ?`, [id]
+      );
 
-    let city = null, area = null;
-    if (hospital.city_id) {
-      const [crow] = await pool.query(`SELECT id, name FROM cities WHERE id = ?`, [hospital.city_id]);
-      city = crow?.[0] ?? null;
+      let city = null, area = null;
+      if (hospital.city_id) {
+        const [crow] = await pool.query(`SELECT id, name FROM cities WHERE id = ?`, [hospital.city_id]);
+        city = crow?.[0] ?? null;
+      }
+      if (hospital.area_id) {
+        const [arow] = await pool.query(`SELECT id, name FROM areas WHERE id = ?`, [hospital.area_id]);
+        area = arow?.[0] ?? null;
+      }
+
+      res.json({
+        ...hospital,
+        specializations,
+        services,
+        procedures,
+        symptoms,
+        city,
+        area,
+      });
+
+    } catch (err) {
+      console.error("❌ getHospitalById Error:", err);
+      res.status(500).json({ error: "Server error" });
     }
-    if (hospital.area_id) {
-      const [arow] = await pool.query(`SELECT id, name FROM areas WHERE id = ?`, [hospital.area_id]);
-      area = arow?.[0] ?? null;
-    }
-
-    res.json({
-      ...hospital,
-      specializations,
-      services,
-      procedures,
-      symptoms,
-      city,
-      area,
-    });
-
-  } catch (err) {
-    console.error("❌ getHospitalById Error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-};
+  };
 
 /* =====================================================
    SLUG HELPERS
@@ -166,10 +208,18 @@ export const createHospital = async (req, res) => {
     /* ------------------ INSERT HOSPITAL ------------------ */
     const [result] = await pool.query(
       `INSERT INTO hospitals
-       (name, slug, timing, short_description, about, image_url, image_key,
-        phone_1, phone_2, website, address, city_id, area_id, status,
-        seo_title, seo_keywords, seo_description)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (
+        name, slug, timing, short_description, about,
+        image_url, image_key,
+        phone_1, phone_2, website, address,
+        city_id, area_id, status,
+        seo_title, seo_keywords, seo_description,
+
+        designation, payment_type,
+        rating, patients_count, patients_stories,
+        is_profile_claimed, created_by
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.name || "",
         slug,
@@ -188,6 +238,14 @@ export const createHospital = async (req, res) => {
         body.seo_title || null,
         body.seo_keywords || null,
         body.seo_description || null,
+
+        body.designation || null,
+        body.payment_type ? Number(body.payment_type) : 0,
+        body.rating ? Number(body.rating) : 0,
+        body.patients_count ? Number(body.patients_count) : 0,
+        body.patients_stories ? Number(body.patients_stories) : 0,
+        body.is_profile_claimed ? 1 : 0,
+        req.user?.id || "admin"
       ]
     );
 
@@ -198,7 +256,7 @@ export const createHospital = async (req, res) => {
       const values = specializations.map((sid, idx) => [
         hospitalId,
         sid,
-        idx === 0 ? 1 : 0, // primary
+        idx === 0 ? 1 : 0,
       ]);
 
       await pool.query(
@@ -231,6 +289,7 @@ export const createHospital = async (req, res) => {
     res.status(500).json({ error: "Failed to create hospital" });
   }
 };
+
 
 /* =====================================================
    UPDATE HOSPITAL
@@ -273,7 +332,15 @@ export const updateHospital = async (req, res) => {
         timing = ?, short_description = ?, about = ?,
         phone_1 = ?, phone_2 = ?, website = ?, address = ?,
         city_id = ?, area_id = ?, status = ?,
-        seo_title = ?, seo_keywords = ?, seo_description = ?
+        seo_title = ?, seo_keywords = ?, seo_description = ?,
+
+        designation = ?,
+        payment_type = ?,
+        rating = ?,
+        patients_count = ?,
+        patients_stories = ?,
+        is_profile_claimed = ?
+
         ${imageUrl ? ", image_url = ?, image_key = ?" : ""}
       WHERE id = ?
     `;
@@ -294,6 +361,14 @@ export const updateHospital = async (req, res) => {
       body.seo_title || null,
       body.seo_keywords || null,
       body.seo_description || null,
+
+      body.designation || null,
+      body.payment_type ? Number(body.payment_type) : 0,
+      body.rating ? Number(body.rating) : 0,
+      body.patients_count ? Number(body.patients_count) : 0,
+      body.patients_stories ? Number(body.patients_stories) : 0,
+      body.is_profile_claimed ? 1 : 0,
+
       ...(imageUrl ? [imageUrl, newImageKey] : []),
       id
     ];
@@ -313,7 +388,10 @@ export const updateHospital = async (req, res) => {
     /* ------------------ SPECIALIZATIONS ------------------ */
     const specializations = normalizeArray(body.specializations);
     if (specializations !== undefined) {
-      await pool.query(`DELETE FROM hospital_specialization WHERE hospital_id = ?`, [id]);
+      await pool.query(
+        `DELETE FROM hospital_specialization WHERE hospital_id = ?`,
+        [id]
+      );
 
       if (specializations.length) {
         const values = specializations.map((sid, idx) => [
@@ -362,25 +440,51 @@ export const updateHospital = async (req, res) => {
 };
 
 
+
 /* =====================================================
    DELETE HOSPITAL
    ===================================================== */
 export const deleteHospital = async (req, res) => {
   const { id } = req.params;
+
   try {
-    const [[hospital]] = await pool.query(`SELECT image_key FROM hospitals WHERE id = ?`, [id]);
-    if (!hospital) return res.status(404).json({ error: "Hospital not found" });
+    const [[hospital]] = await pool.query(
+      `SELECT image_key FROM hospitals WHERE id = ?`,
+      [id]
+    );
+
+    if (!hospital) {
+      return res.status(404).json({ error: "Hospital not found" });
+    }
 
     const imageKey = hospital.image_key;
 
-    const tables = ["hospital_specialization", "hospital_service", "hospital_procedure", "hospital_symptom"];
+    /* ------------------ DELETE RELATIONS (UNCHANGED) ------------------ */
+    const tables = [
+      "hospital_specialization",
+      "hospital_service",
+      "hospital_procedure",
+      "hospital_symptom"
+    ];
+
     for (const t of tables) {
       await pool.query(`DELETE FROM ${t} WHERE hospital_id = ?`, [id]);
     }
 
-    await pool.query(`DELETE FROM hospitals WHERE id = ?`, [id]);
+    /* ------------------ SOFT DELETE HOSPITAL ------------------ */
+    await pool.query(
+      `UPDATE hospitals
+       SET status = 'inactive',
+           deleted_at = NOW(),
+           deleted_by = ?
+       WHERE id = ?`,
+      [req.user?.id || "admin", id]
+    );
 
-    if (imageKey) await deleteFromS3(imageKey);
+    /* ------------------ DELETE IMAGE (UNCHANGED) ------------------ */
+    if (imageKey) {
+      await deleteFromS3(imageKey);
+    }
 
     res.json({ ok: true });
 
@@ -389,3 +493,4 @@ export const deleteHospital = async (req, res) => {
     res.status(500).json({ error: "Failed to delete hospital" });
   }
 };
+

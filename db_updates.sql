@@ -1,1404 +1,160 @@
+ALTER TABLE doctors 
+ADD COLUMN is_profile_claimed TINYINT(1) DEFAULT 0;
+
+ALTER TABLE doctors 
+ADD COLUMN patients_count INT DEFAULT 0;
 
 
--- Create Database
-CREATE DATABASE IF NOT EXISTS pregajourney;
-USE pregajourney;
-
--- =============================
--- 1. Location Tables
--- =============================
-
-CREATE TABLE countries (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL
-);
-
-CREATE TABLE states (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    country_id INT,
-    FOREIGN KEY (country_id) REFERENCES countries(id)
-);
-
-CREATE TABLE cities (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    state_id INT,
-    FOREIGN KEY (state_id) REFERENCES states(id)
-);
-
--- =============================
--- 2. Specializations / Services / Procedures / Symptoms
--- =============================
-
-CREATE TABLE specializations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(150) NOT NULL
-);
-
-CREATE TABLE services (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(150) NOT NULL
-);
-
-CREATE TABLE procedures (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(150) NOT NULL
-);
-
-CREATE TABLE symptoms (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(150) NOT NULL
-);
-
--- =============================
--- 3. Hospitals & Clinics
--- =============================
-
-CREATE TABLE hospitals (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
-    image VARCHAR(255),
-    timing VARCHAR(200),
-    phone_1 VARCHAR(20),
-    phone_2 VARCHAR(20),
-    website VARCHAR(200),
-    address TEXT,
-    city_id INT,
-    FOREIGN KEY (city_id) REFERENCES cities(id)
-);
-
-CREATE TABLE clinics (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
-    image VARCHAR(255),
-    timing VARCHAR(200),
-    phone_1 VARCHAR(20),
-    phone_2 VARCHAR(20),
-    website VARCHAR(200),
-    address TEXT,
-    city_id INT,
-    FOREIGN KEY (city_id) REFERENCES cities(id)
-);
-
--- =============================
--- 4. Doctors
--- =============================
-
-CREATE TABLE doctors (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
-    specialization_id INT,
-    degree VARCHAR(200),
-    experience_years INT,
-    registration_number VARCHAR(100),
-    about TEXT,
-    phone_1 VARCHAR(20),
-    phone_2 VARCHAR(20),
-    email VARCHAR(100),
-    profile_image VARCHAR(255),
-    address TEXT,
-    city_id INT,
-    FOREIGN KEY (city_id) REFERENCES cities(id),
-    FOREIGN KEY (specialization_id) REFERENCES specializations(id)
-);
-
--- =============================
--- 5. Link Tables (Relationships)
--- =============================
-
--- Doctor ↔ Hospital (many-to-many)
-CREATE TABLE doctor_hospital (
-    doctor_id INT,
-    hospital_id INT,
-    PRIMARY KEY (doctor_id, hospital_id),
-    FOREIGN KEY (doctor_id) REFERENCES doctors(id),
-    FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
-);
-
--- Doctor ↔ Clinic (many-to-many)
-CREATE TABLE doctor_clinic (
-    doctor_id INT,
-    clinic_id INT,
-    PRIMARY KEY (doctor_id, clinic_id),
-    FOREIGN KEY (doctor_id) REFERENCES doctors(id),
-    FOREIGN KEY (clinic_id) REFERENCES clinics(id)
-);
-
--- Hospital ↔ Services (many-to-many)
-CREATE TABLE hospital_services (
-    hospital_id INT,
-    service_id INT,
-    PRIMARY KEY (hospital_id, service_id),
-    FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
-    FOREIGN KEY (service_id) REFERENCES services(id)
-);
-
--- Doctor ↔ Services (many-to-many)
-CREATE TABLE doctor_services (
-    doctor_id INT,
-    service_id INT,
-    PRIMARY KEY (doctor_id, service_id),
-    FOREIGN KEY (doctor_id) REFERENCES doctors(id),
-    FOREIGN KEY (service_id) REFERENCES services(id)
-);
-
--- Hospital ↔ Procedures
-CREATE TABLE hospital_procedures (
-    hospital_id INT,
-    procedure_id INT,
-    PRIMARY KEY (hospital_id, procedure_id),
-    FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
-    FOREIGN KEY (procedure_id) REFERENCES procedures(id)
+CREATE TABLE clinic_images (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  clinic_id INT NOT NULL,
+  image_url TEXT NOT NULL,
+  image_key TEXT,
+  sort_order INT DEFAULT 0,
+  created_at VARCHAR(45) DEFAULT NULL,
+  FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
 );
 
 
-ALTER TABLE cities ADD COLUMN slug VARCHAR(150);
-ALTER TABLE specializations ADD COLUMN slug VARCHAR(150);
-ALTER TABLE doctors ADD COLUMN slug VARCHAR(150);
-ALTER TABLE hospitals ADD COLUMN slug VARCHAR(150);
-ALTER TABLE clinics ADD COLUMN slug VARCHAR(150);
-
-
-ALTER TABLE hospitals ADD COLUMN area VARCHAR(100);
-ALTER TABLE clinics ADD COLUMN area VARCHAR(100);
-ALTER TABLE doctors ADD COLUMN area VARCHAR(100);
-
-ALTER TABLE doctors ADD COLUMN rating DECIMAL(3,2) DEFAULT 0;
-ALTER TABLE doctors ADD COLUMN consultation_fee DECIMAL(10,2) DEFAULT 0;
-
-
-ALTER TABLE doctors ADD COLUMN status ENUM('active', 'inactive') DEFAULT 'active';
-ALTER TABLE hospitals ADD COLUMN status ENUM('active', 'inactive') DEFAULT 'active';
-ALTER TABLE clinics ADD COLUMN status ENUM('active', 'inactive') DEFAULT 'active';
-
-
-CREATE TABLE areas (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  name VARCHAR(100),
-  city_id INT,
-  FOREIGN KEY (city_id) REFERENCES cities(id)
+CREATE TABLE hospital_images (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id INT NOT NULL,
+  image_url TEXT NOT NULL,
+  image_key TEXT,
+  sort_order INT DEFAULT 0,
+  created_at VARCHAR(45) DEFAULT NULL,
+  FOREIGN KEY (hospital_id) REFERENCES hospitals(id) ON DELETE CASCADE
 );
 
 
-INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('2', 'South Delhi', '1');
-INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('3', 'East Delhi', '1');
 
--- Sym
-INSERT INTO pregajourney.symptoms (name) VALUES
-('Pap Smear'),
-('Pelvic Exam'),
-('Breast Exam'),
-('Menstrual Disorders Treatment'),
-('PCOS Management'),
-('Endometriosis Treatment'),
-('Uterine Fibroid Management'),
-('Antenatal Care'),
-('High-Risk Pregnancy Management'),
-('Labor & Delivery'),
-('Cesarean Section'),
-('Hysteroscopy'),
-('Laparoscopy'),
-('Myomectomy'),
-('Tuboplasty / Tubal Recanalization'),
-('Clomiphene Citrate (Clomid) Therapy'),
-('Letrozole Therapy'),
-('Gonadotropin Injections'),
-('hMG / FSH Therapy'),
-('GnRH Agonists / Antagonists'),
-('Metformin Therapy'),
-('Progesterone Supplementation'),
-('Dopamine Agonists'),
-('Intrauterine Insemination (IUI)'),
-('In Vitro Fertilization (IVF)'),
-('Intracytoplasmic Sperm Injection (ICSI)'),
-('Frozen Embryo Transfer (FET)'),
-('Tuboplasty / Tubal Recanalization'),
-('Polypectomy'),
-('Adhesiolysis'),
-('Ovarian Cystectomy'),
-('Endometriosis Surgery'),
-('Ovarian Drilling'),
-('Egg Donation'),
-('Embryo Donation'),
-('Oocyte Cryopreservation'),
-('Embryo Cryopreservation'),
-('Surrogacy'),
-('Thyroid Therapy'),
-('Hyperprolactinemia Treatment'),
-('Immunotherapy'),
-('Antibiotics / Infection Treatment'),
-('Lifestyle & Nutrition'),
-('Nutritional Supplements');
+
+ALTER TABLE clinics 
+ADD COLUMN rating DECIMAL(3,2) DEFAULT 0.00;
+
+
+ALTER TABLE doctor_clinic 
+ADD COLUMN is_on_call TINYINT(1) DEFAULT 0;
+
+ALTER TABLE doctor_hospital
+ADD COLUMN is_on_call TINYINT(1) DEFAULT 0 AFTER is_primary;
+
+ALTER TABLE pregajourney.hospitals
+ADD COLUMN is_profile_claimed TINYINT(1) DEFAULT 0,
+ADD COLUMN patients_count INT DEFAULT 0,
+ADD COLUMN rating DECIMAL(3,2) DEFAULT 0.00,
+ADD COLUMN patients_stories INT DEFAULT 0;
+
+ALTER TABLE pregajourney.clinics
+ADD COLUMN is_profile_claimed TINYINT(1) DEFAULT 0,
+ADD COLUMN patients_count INT DEFAULT 0,
+ADD COLUMN patients_stories INT DEFAULT 0;
+
+
+ALTER TABLE `pregajourney`.`hospitals` 
+ADD COLUMN `payment_type` INT NULL DEFAULT 0 AFTER `patients_stories`;
+
+
+ALTER TABLE `pregajourney`.`clinics` 
+ADD COLUMN `payment_type` INT NULL DEFAULT 0 AFTER `patients_stories`;
+
+ALTER TABLE `pregajourney`.`hospitals` 
+ADD COLUMN `designation` VARCHAR(255) NULL AFTER `payment_type`;
+
+
+
+INSERT INTO `pregajourney`.`specializations` (`id`, `name`, `slug`) VALUES ('15', 'Urologist', 'urologist');
+INSERT INTO `pregajourney`.`specializations` (`id`, `name`, `slug`) VALUES ('16', 'Otolaryngologist', 'otolaryngologist');
+INSERT INTO `pregajourney`.`procedures` (`id`, `name`, `slug`) VALUES ('35', 'Aesthetic', 'aesthetic');
+
+
+
+
+UPDATE symptoms SET slug = 'pap-smear' WHERE id = 1;
+UPDATE symptoms SET slug = 'pelvic-exam' WHERE id = 2;
+UPDATE symptoms SET slug = 'breast-exam' WHERE id = 3;
+UPDATE symptoms SET slug = 'menstrual-disorders-treatment' WHERE id = 4;
+UPDATE symptoms SET slug = 'pcos-management' WHERE id = 5;
+UPDATE symptoms SET slug = 'endometriosis-treatment' WHERE id = 6;
+UPDATE symptoms SET slug = 'uterine-fibroid-management' WHERE id = 7;
+UPDATE symptoms SET slug = 'antenatal-care' WHERE id = 8;
+UPDATE symptoms SET slug = 'high-risk-pregnancy-management' WHERE id = 9;
+UPDATE symptoms SET slug = 'labor-and-delivery' WHERE id = 10;
+UPDATE symptoms SET slug = 'cesarean-section' WHERE id = 11;
+UPDATE symptoms SET slug = 'hysteroscopy' WHERE id = 12;
+UPDATE symptoms SET slug = 'laparoscopy' WHERE id = 13;
+UPDATE symptoms SET slug = 'myomectomy' WHERE id = 14;
+UPDATE symptoms SET slug = 'tuboplasty-tubal-recanalization' WHERE id = 15;
+UPDATE symptoms SET slug = 'clomiphene-citrate-clomid-therapy' WHERE id = 16;
+UPDATE symptoms SET slug = 'letrozole-therapy' WHERE id = 17;
+UPDATE symptoms SET slug = 'gonadotropin-injections' WHERE id = 18;
+UPDATE symptoms SET slug = 'hmg-fsh-therapy' WHERE id = 19;
+UPDATE symptoms SET slug = 'gnrh-agonists-antagonists' WHERE id = 20;
+UPDATE symptoms SET slug = 'metformin-therapy' WHERE id = 21;
+UPDATE symptoms SET slug = 'progesterone-supplementation' WHERE id = 22;
+UPDATE symptoms SET slug = 'dopamine-agonists' WHERE id = 23;
+UPDATE symptoms SET slug = 'intrauterine-insemination-iui' WHERE id = 24;
+UPDATE symptoms SET slug = 'in-vitro-fertilization-ivf' WHERE id = 25;
+UPDATE symptoms SET slug = 'intracytoplasmic-sperm-injection-icsi' WHERE id = 26;
+UPDATE symptoms SET slug = 'frozen-embryo-transfer-fet' WHERE id = 27;
+UPDATE symptoms SET slug = 'tuboplasty-tubal-recanalization' WHERE id = 28;
+UPDATE symptoms SET slug = 'polypectomy' WHERE id = 29;
+UPDATE symptoms SET slug = 'adhesiolysis' WHERE id = 30;
+UPDATE symptoms SET slug = 'ovarian-cystectomy' WHERE id = 31;
+UPDATE symptoms SET slug = 'endometriosis-surgery' WHERE id = 32;
+UPDATE symptoms SET slug = 'ovarian-drilling' WHERE id = 33;
+UPDATE symptoms SET slug = 'egg-donation' WHERE id = 34;
+UPDATE symptoms SET slug = 'embryo-donation' WHERE id = 35;
+UPDATE symptoms SET slug = 'oocyte-cryopreservation' WHERE id = 36;
+UPDATE symptoms SET slug = 'embryo-cryopreservation' WHERE id = 37;
+UPDATE symptoms SET slug = 'surrogacy' WHERE id = 38;
+UPDATE symptoms SET slug = 'thyroid-therapy' WHERE id = 39;
+UPDATE symptoms SET slug = 'hyperprolactinemia-treatment' WHERE id = 40;
+UPDATE symptoms SET slug = 'immunotherapy' WHERE id = 41;
+UPDATE symptoms SET slug = 'antibiotics-infection-treatment' WHERE id = 42;
+UPDATE symptoms SET slug = 'lifestyle-nutrition' WHERE id = 43;
+UPDATE symptoms SET slug = 'nutritional-supplements' WHERE id = 44;
+
+
+INSERT INTO symptoms (name, slug) VALUES
+('Period doubts or Pregnancy', 'period_pregnancy'),
+('Acne, pimple or skin issues', 'skin_issues'),
+('Performance issues in bed', 'sexual_performance_issues'),
+('Cold, cough or fever', 'cold_cough_fever'),
+('Child not feeling well', 'child_unwell'),
+('Depression or anxiety', 'depression_anxiety');
+
+
+INSERT INTO search_intents (keyword, entity_type, entity_id, priority, status) VALUES
+('specializations', 'specialization', NULL, 100, 1),
+('symptoms', 'symptom', NULL, 100, 1),
+('services', 'service', NULL, 100, 1),
+('procedures', 'procedure', NULL, 100, 1);
+
+
+INSERT INTO `pregajourney`.`areas` (`id`, `name`, `city_id`, `zone`) VALUES ('35', 'Model Town', '130', 'Jalandhar');
 
 
 ALTER TABLE `pregajourney`.`doctors` 
-CHANGE COLUMN `profile_image` `profile_image` TEXT NULL DEFAULT NULL ;
+ADD COLUMN `gender` VARCHAR(45) NULL AFTER `patients_count`;
 
 
-UPDATE `u985266191_pregajourney`.`doctors` SET `profile_image` = 'data:image/png;base64,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' WHERE (`id` = '2');
 
+UPDATE pregajourney.doctors
+SET gender = 'female'
+WHERE id IN (23,27,28,29,30,34,36,37,38,40,42,46);
 
-ALTER TABLE `pregajourney`.`doctors` 
-CHANGE COLUMN `profile_image` `profile_image` LONGTEXT NULL DEFAULT NULL ;
+UPDATE pregajourney.doctors
+SET gender = 'male'
+WHERE id NOT IN (23,27,28,29,30,34,36,37,38,40,42,46);
 
+ALTER TABLE doctors
+CHANGE COLUMN experience_years experience_years INT NULL DEFAULT 0,
+CHANGE COLUMN gender gender VARCHAR(45) NULL DEFAULT 'male';
 
-INSERT INTO `u985266191_pregajourney`.`states` (`id`, `name`, `country_id`) VALUES ('2', 'Haryana', '1');
-INSERT INTO `u985266191_pregajourney`.`states` (`id`, `name`, `country_id`) VALUES ('3', 'Uttar Pradesh', '1');
-INSERT INTO `u985266191_pregajourney`.`states` (`id`, `name`, `country_id`) VALUES ('4', 'Jammu and Kashmir', '1');
-INSERT INTO `u985266191_pregajourney`.`states` (`id`, `name`, `country_id`) VALUES ('5', 'Punjab', '1');
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
--- UPDATE `pregajourney`.`cities` SET `name` = ' East Delhi' WHERE (`id` = '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('4', 'North Delhi', '1');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('5', 'North East Delhi', '1');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('6', 'North West Delhi', '1');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('7', 'West Delhi', '1');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('8', 'South West Delhi', '1');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('9', 'Ambala ', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('10', 'Bhiwani', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('11', 'Charkhi Dadri', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('12', 'Faridabad', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('13', 'Fatehabad', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('14', 'Gurugram', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('15', 'Hisar', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('16', 'Jhajjar', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('17', 'Jind', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('18', 'Kaithal', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('19', 'Karnal ', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('20', 'Kurukshetra', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('21', 'Mahendragarh', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('22', 'Nuh', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('23', 'Palwal', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('24', 'Panchkula ', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('25', 'Panipat', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('26', 'Riwari', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('27', 'Rohtak', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('28', 'Sirsa', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('29', 'Sonipat', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('30', 'Yamunanagar ', '2');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('31', 'Agra', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('32', 'Aligarh', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('33', 'Ambedkar Nagar', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('34', 'Amethi', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('35', 'Amroha', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('36', 'Auraiya', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('37', 'Ayodhya', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('38', 'Azamgarh', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('39', 'Baghpat', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('40', 'Bahraich', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('41', 'Ballia', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('42', 'Balrampur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('43', 'Banda', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('44', 'Bara Banki', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('45', 'Bareilly', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('46', 'Basti', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('47', 'Bhadohi', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('48', 'Bijnor', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('49', 'Budaun', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('50', 'Bulandshahr', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('51', 'Chandauli', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('52', 'Chitrakoot', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('53', 'Deoria', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('54', 'Etah', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('55', 'Etawah', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('56', 'Farrukhabad', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('57', 'Fatehpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('58', 'Firozabad', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('59', 'Gautam Buddha Nagar', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('60', 'Ghaziabad', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('61', 'Ghazipur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('62', 'Gonda', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('63', 'Gorakhpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('64', 'Hamirpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('65', 'Hapur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('66', 'Hardoi', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('67', 'Hathras', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('68', 'Jalaun', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('69', 'Jaunpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('70', 'Jhansi', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('71', 'Kannauj', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('72', 'Kanpur Dehat', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('73', 'Kanpur Nagar', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('74', 'Kasganj', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('75', 'Kaushambi', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('76', 'Kheri', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('78', 'Kushinagar', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('79', 'Lalitpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('80', 'Lucknow', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('81', 'Mahoba', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('82', 'Mahrajganj', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('83', 'Mainpuri', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('84', 'Mathura', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('85', 'Mau', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('86', 'Meerut', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('87', 'Mirzapur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('88', 'Moradabad', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('89', 'Muzaffarnagar', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('90', 'Noida', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('91', 'Greater Noida', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('92', 'Pilibhit', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('93', 'Pratapgarh', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('94', 'Prayagraj', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('95', 'Raebareli', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('96', 'Rampur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('97', 'Saharanpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('98', 'Sambhal', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('99', 'Sant Kabir Nagar', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('100', 'Shahjahanpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('101', 'Shamli', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('102', 'Shrawasti', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('103', 'Siddharthnagar', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('104', 'Sitapur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('105', 'Sonbhadra', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('106', 'Sultanpur', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('107', 'Unnao', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('108', 'Varanasi', '3');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('109', 'Anantnag', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('110', 'Bandipora', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('111', 'Baramulla', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('112', 'Budgam', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('113', 'Doda', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('114', 'Ganderbal', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('115', 'Jammu', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('116', 'Kathua', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('117', 'Kishtwar', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('118', 'Kulgam', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('119', 'Kupwara', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('120', 'Poonch', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('121', 'Pulwama', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('122', 'Rajouri', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('123', 'Ramban', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('124', 'Reasi', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('125', 'Samba', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('126', 'Shopian', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('127', 'Srinagar', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('128', 'Udhampur', '4');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('129', 'Amritsar', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('130', 'Barnala', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('131', 'Bathinda', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('132', 'Faridkot', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('133', 'Fatehgarh Sahib', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('134', 'Fazilka', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('135', 'Ferozepur', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('136', 'Gurdaspur', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('137', 'Hoshiarpur', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('138', 'Jalandhar', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('139', 'Kapurthala', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('140', 'Ludhiana', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('141', 'Malerkotla', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('142', 'Mansa', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('143', 'Moga', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('144', 'Pathankot', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('145', 'Patiala', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('146', 'Rupnagar', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('147', 'S.A.S Nagar', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('148', 'Sangrur', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('149', 'Shahid Bhagat Singh Nagar', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('150', 'Sri Muktsar Sahib', '5');
--- INSERT INTO `pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('151', 'Tarn Taran', '5');
-
-
-
-
-
-
-UPDATE `u985266191_pregajourney`.`cities` SET `name` = ' East Delhi' WHERE (`id` = '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('4', 'North Delhi', '1');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('5', 'North East Delhi', '1');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('6', 'North West Delhi', '1');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('7', 'West Delhi', '1');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('8', 'South West Delhi', '1');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('9', 'Ambala ', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('10', 'Bhiwani', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('11', 'Charkhi Dadri', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('12', 'Faridabad', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('13', 'Fatehabad', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('14', 'Gurugram', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('15', 'Hisar', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('16', 'Jhajjar', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('17', 'Jind', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('18', 'Kaithal', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('19', 'Karnal ', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('20', 'Kurukshetra', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('21', 'Mahendragarh', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('22', 'Nuh', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('23', 'Palwal', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('24', 'Panchkula ', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('25', 'Panipat', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('26', 'Riwari', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('27', 'Rohtak', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('28', 'Sirsa', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('29', 'Sonipat', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('30', 'Yamunanagar ', '2');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('31', 'Agra', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('32', 'Aligarh', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('33', 'Ambedkar Nagar', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('34', 'Amethi', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('35', 'Amroha', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('36', 'Auraiya', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('37', 'Ayodhya', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('38', 'Azamgarh', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('39', 'Baghpat', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('40', 'Bahraich', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('41', 'Ballia', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('42', 'Balrampur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('43', 'Banda', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('44', 'Bara Banki', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('45', 'Bareilly', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('46', 'Basti', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('47', 'Bhadohi', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('48', 'Bijnor', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('49', 'Budaun', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('50', 'Bulandshahr', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('51', 'Chandauli', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('52', 'Chitrakoot', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('53', 'Deoria', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('54', 'Etah', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('55', 'Etawah', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('56', 'Farrukhabad', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('57', 'Fatehpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('58', 'Firozabad', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('59', 'Gautam Buddha Nagar', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('60', 'Ghaziabad', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('61', 'Ghazipur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('62', 'Gonda', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('63', 'Gorakhpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('64', 'Hamirpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('65', 'Hapur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('66', 'Hardoi', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('67', 'Hathras', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('68', 'Jalaun', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('69', 'Jaunpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('70', 'Jhansi', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('71', 'Kannauj', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('72', 'Kanpur Dehat', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('73', 'Kanpur Nagar', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('74', 'Kasganj', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('75', 'Kaushambi', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('76', 'Kheri', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('78', 'Kushinagar', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('79', 'Lalitpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('80', 'Lucknow', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('81', 'Mahoba', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('82', 'Mahrajganj', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('83', 'Mainpuri', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('84', 'Mathura', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('85', 'Mau', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('86', 'Meerut', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('87', 'Mirzapur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('88', 'Moradabad', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('89', 'Muzaffarnagar', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('90', 'Noida', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('91', 'Greater Noida', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('92', 'Pilibhit', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('93', 'Pratapgarh', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('94', 'Prayagraj', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('95', 'Raebareli', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('96', 'Rampur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('97', 'Saharanpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('98', 'Sambhal', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('99', 'Sant Kabir Nagar', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('100', 'Shahjahanpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('101', 'Shamli', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('102', 'Shrawasti', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('103', 'Siddharthnagar', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('104', 'Sitapur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('105', 'Sonbhadra', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('106', 'Sultanpur', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('107', 'Unnao', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('108', 'Varanasi', '3');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('109', 'Anantnag', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('110', 'Bandipora', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('111', 'Baramulla', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('112', 'Budgam', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('113', 'Doda', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('114', 'Ganderbal', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('115', 'Jammu', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('116', 'Kathua', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('117', 'Kishtwar', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('118', 'Kulgam', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('119', 'Kupwara', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('120', 'Poonch', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('121', 'Pulwama', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('122', 'Rajouri', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('123', 'Ramban', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('124', 'Reasi', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('125', 'Samba', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('126', 'Shopian', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('127', 'Srinagar', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('128', 'Udhampur', '4');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('129', 'Amritsar', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('130', 'Barnala', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('131', 'Bathinda', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('132', 'Faridkot', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('133', 'Fatehgarh Sahib', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('134', 'Fazilka', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('135', 'Ferozepur', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('136', 'Gurdaspur', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('137', 'Hoshiarpur', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('138', 'Jalandhar', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('139', 'Kapurthala', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('140', 'Ludhiana', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('141', 'Malerkotla', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('142', 'Mansa', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('143', 'Moga', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('144', 'Pathankot', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('145', 'Patiala', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('146', 'Rupnagar', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('147', 'S.A.S Nagar', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('148', 'Sangrur', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('149', 'Shahid Bhagat Singh Nagar', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('150', 'Sri Muktsar Sahib', '5');
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES ('151', 'Tarn Taran', '5');
-
-
-
-
--- UPDATE `pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '1');
--- UPDATE `pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '2');
--- UPDATE `pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '23');
--- UPDATE `pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '24');
--- UPDATE `pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '25');
--- UPDATE `pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '26');
--- UPDATE `pregajourney`.`doctors` SET `city_id` = '1' WHERE (`id` = '23');
-
-
-
-UPDATE `u985266191_pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '1');
-UPDATE `u985266191_pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '2');
-UPDATE `u985266191_pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '23');
-UPDATE `u985266191_pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '24');
-UPDATE `u985266191_pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '25');
-UPDATE `u985266191_pregajourney`.`doctors` SET `area` = '1' WHERE (`id` = '26');
-UPDATE `u985266191_pregajourney`.`doctors` SET `city_id` = '1' WHERE (`id` = '23');
-
-
-
-ALTER TABLE `u985266191_pregajourney`.`doctors` 
-CHANGE COLUMN `area` `area` INT NULL DEFAULT NULL ;
-
-ALTER TABLE `u985266191_pregajourney`.`doctors` 
-CHANGE COLUMN `area` `area_id` INT NULL DEFAULT NULL ;
-
-
-
-
-INSERT INTO `u985266191_pregajourney`.`cities` (`id`, `name`, `state_id`) VALUES
-('9', 'Ambala', '2'),
-('10', 'Bhiwani', '2'),
-('11', 'Charkhi Dadri', '2'),
-('12', 'Faridabad', '2'),
-('13', 'Fatehabad', '2'),
-('14', 'Gurugram', '2'),
-('15', 'Hisar', '2'),
-('16', 'Jhajjar', '2'),
-('17', 'Jind', '2'),
-('18', 'Kaithal', '2'),
-('19', 'Karnal', '2'),
-('20', 'Kurukshetra', '2'),
-('21', 'Mahendragarh', '2'),
-('22', 'Nuh', '2'),
-('23', 'Palwal', '2'),
-('24', 'Panchkula', '2'),
-('25', 'Panipat', '2'),
-('26', 'Riwari', '2'),
-('27', 'Rohtak', '2'),
-('28', 'Sirsa', '2'),
-('29', 'Sonipat', '2'),
-('30', 'Yamunanagar', '2'),
-('31', 'Agra', '3'),
-('32', 'Aligarh', '3'),
-('33', 'Ambedkar Nagar', '3'),
-('34', 'Amethi', '3'),
-('35', 'Amroha', '3'),
-('36', 'Auraiya', '3'),
-('37', 'Ayodhya', '3'),
-('38', 'Azamgarh', '3'),
-('39', 'Baghpat', '3'),
-('40', 'Bahraich', '3'),
-('41', 'Ballia', '3'),
-('42', 'Balrampur', '3'),
-('43', 'Banda', '3'),
-('44', 'Bara Banki', '3'),
-('45', 'Bareilly', '3'),
-('46', 'Basti', '3'),
-('47', 'Bhadohi', '3'),
-('48', 'Bijnor', '3'),
-('49', 'Budaun', '3'),
-('50', 'Bulandshahr', '3'),
-('51', 'Chandauli', '3'),
-('52', 'Chitrakoot', '3'),
-('53', 'Deoria', '3'),
-('54', 'Etah', '3'),
-('55', 'Etawah', '3'),
-('56', 'Farrukhabad', '3'),
-('57', 'Fatehpur', '3'),
-('58', 'Firozabad', '3'),
-('59', 'Gautam Buddha Nagar', '3'),
-('60', 'Ghaziabad', '3'),
-('61', 'Ghazipur', '3'),
-('62', 'Gonda', '3'),
-('63', 'Gorakhpur', '3'),
-('64', 'Hamirpur', '3'),
-('65', 'Hapur', '3'),
-('66', 'Hardoi', '3'),
-('67', 'Hathras', '3'),
-('68', 'Jalaun', '3'),
-('69', 'Jaunpur', '3'),
-('70', 'Jhansi', '3'),
-('71', 'Kannauj', '3'),
-('72', 'Kanpur Dehat', '3'),
-('73', 'Kanpur Nagar', '3'),
-('74', 'Kasganj', '3'),
-('75', 'Kaushambi', '3'),
-('76', 'Kheri', '3'),
-('78', 'Kushinagar', '3'),
-('79', 'Lalitpur', '3'),
-('80', 'Lucknow', '3'),
-('81', 'Mahoba', '3'),
-('82', 'Mahrajganj', '3'),
-('83', 'Mainpuri', '3'),
-('84', 'Mathura', '3'),
-('85', 'Mau', '3'),
-('86', 'Meerut', '3'),
-('87', 'Mirzapur', '3'),
-('88', 'Moradabad', '3'),
-('89', 'Muzaffarnagar', '3'),
-('90', 'Noida', '3'),
-('91', 'Greater Noida', '3'),
-('92', 'Pilibhit', '3'),
-('93', 'Pratapgarh', '3'),
-('94', 'Prayagraj', '3'),
-('95', 'Raebareli', '3'),
-('96', 'Rampur', '3'),
-('97', 'Saharanpur', '3'),
-('98', 'Sambhal', '3'),
-('99', 'Sant Kabir Nagar', '3'),
-('100', 'Shahjahanpur', '3'),
-('101', 'Shamli', '3'),
-('102', 'Shrawasti', '3'),
-('103', 'Siddharthnagar', '3'),
-('104', 'Sitapur', '3'),
-('105', 'Sonbhadra', '3'),
-('106', 'Sultanpur', '3'),
-('107', 'Unnao', '3'),
-('108', 'Varanasi', '3'),
-('109', 'Anantnag', '4'),
-('110', 'Bandipora', '4'),
-('111', 'Baramulla', '4'),
-('112', 'Budgam', '4'),
-('113', 'Doda', '4'),
-('114', 'Ganderbal', '4'),
-('115', 'Jammu', '4'),
-('116', 'Kathua', '4'),
-('117', 'Kishtwar', '4'),
-('118', 'Kulgam', '4'),
-('119', 'Kupwara', '4'),
-('120', 'Poonch', '4'),
-('121', 'Pulwama', '4'),
-('122', 'Rajouri', '4'),
-('123', 'Ramban', '4'),
-('124', 'Reasi', '4'),
-('125', 'Samba', '4'),
-('126', 'Shopian', '4'),
-('127', 'Srinagar', '4'),
-('128', 'Udhampur', '4'),
-('129', 'Amritsar', '5'),
-('130', 'Barnala', '5'),
-('131', 'Bathinda', '5'),
-('132', 'Faridkot', '5'),
-('133', 'Fatehgarh Sahib', '5'),
-('134', 'Fazilka', '5'),
-('135', 'Ferozepur', '5'),
-('136', 'Gurdaspur', '5'),
-('137', 'Hoshiarpur', '5'),
-('138', 'Jalandhar', '5'),
-('139', 'Kapurthala', '5'),
-('140', 'Ludhiana', '5'),
-('141', 'Malerkotla', '5'),
-('142', 'Mansa', '5'),
-('143', 'Moga', '5'),
-('144', 'Pathankot', '5'),
-('145', 'Patiala', '5'),
-('146', 'Rupnagar', '5'),
-('147', 'S.A.S Nagar', '5'),
-('148', 'Sangrur', '5'),
-('149', 'Shahid Bhagat Singh Nagar', '5'),
-('150', 'Sri Muktsar Sahib', '5'),
-('151', 'Tarn Taran', '5');
-
-
-
-CREATE TABLE `blog_sections` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `title` VARCHAR(255) NOT NULL,
-  `is_slider` TINYINT(1) DEFAULT 0 COMMENT '1 = slider section, 0 = normal grid',
-  `status` TINYINT(1) DEFAULT 1 COMMENT '1 = active, 0 = inactive',
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
-
-CREATE TABLE `blogs` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `section_id` INT NOT NULL,
-  `title` VARCHAR(255) NOT NULL,
-  `description` TEXT,
-  `image_url` VARCHAR(500),
-  `url` VARCHAR(500),
-  `status` TINYINT(1) DEFAULT 1 COMMENT '1 = active, 0 = inactive',
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (`section_id`) REFERENCES `blog_sections`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-
-
-INSERT INTO `blog_sections` (`title`, `is_slider`, `status`) VALUES
-('Health & Wellness', 0, 1),
-('Nutrition & Fitness', 1, 1),
-('Lifestyle & Prevention', 0, 1),
-('Expert Advice', 0, 1);
-
-
-INSERT INTO `blogs` (`section_id`, `title`, `description`, `image_url`, `url`, `status`) VALUES
--- Health & Wellness (Section 1)
-(1, 'Winter Health Tips: Staying Fit and Strong', 'Discover simple habits to keep your immunity strong and stay active during cold months.', 'winter_health_tips.jpg', 'https://example.com/blog1', 1),
-(1, 'Managing Stress in Daily Life', 'Learn how to balance your routine and reduce stress with easy lifestyle changes.', 'managing_stress.jpg', 'https://example.com/blog2', 1),
-(1, 'Better Sleep for a Healthier You', 'Find out how quality sleep boosts immunity, energy, and overall mental health.', 'better_sleep.jpg', 'https://example.com/blog3', 1),
-
--- Nutrition & Fitness (Section 2)
-(2, 'Superfoods to Add to Your Diet', 'Explore powerful foods that support your health and energy throughout the day.', 'superfoods_diet.jpg', 'https://example.com/blog4', 1),
-(2, 'Morning Yoga for Beginners', 'Start your day with simple yoga poses to improve flexibility and reduce fatigue.', 'morning_yoga.jpg', 'https://example.com/blog5', 1),
-(2, 'Hydration: The Secret to Good Health', 'Understand the benefits of drinking enough water for metabolism and skin glow.', 'hydration_tips.jpg', 'https://example.com/blog6', 1),
-(2, 'Strength Training Myths Debunked', 'Learn the truth behind strength training and why it’s beneficial for everyone.', 'strength_training_myths.jpg', 'https://example.com/blog7', 1),
-
--- Lifestyle & Prevention (Section 3)
-(3, 'Digital Detox: Reclaim Your Focus', 'Reduce screen time and discover the power of reconnecting with real life.', 'digital_detox.jpg', 'https://example.com/blog8', 1),
-(3, 'Early Signs You Shouldn\'t Ignore', 'Understand early symptoms that can help in timely diagnosis and treatment.', 'early_signs.jpg', 'https://example.com/blog9', 1),
-(3, 'Simple Morning Routines for a Productive Day', 'Kickstart your day with habits that boost your focus and happiness.', 'morning_routines.jpg', 'https://example.com/blog10', 1),
-
--- Expert Advice (Section 4)
-(4, 'Why Regular Checkups Matter', 'Doctors explain the importance of preventive health checkups for every age group.', 'regular_checkups.jpg', 'https://example.com/blog11', 1),
-(4, 'Heart Health: Doctor’s Recommendations', 'Practical medical advice on maintaining a healthy heart through diet and activity.', 'heart_health.jpg', 'https://example.com/blog12', 1),
-(4, 'Myths About Diabetes: Expert Opinion', 'Endocrinologists share real facts that bust common misconceptions about diabetes.', 'diabetes_myths.jpg', 'https://example.com/blog13', 1);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-INSERT INTO u985266191_pregajourney.procedures (id, name) 
-VALUES 
-(4, 'hMG / FSH Therapy'),
-(5, 'GnRH Agonist / Antagonist Protocols'),
-(6, 'Metformin Therapy'),
-(7, 'Progesterone Supplementation'),
-(8, 'Dopamine Agonist Therapy'),
-(9, 'Intrauterine Insemination (IUI)'),
-(10, 'In Vitro Fertilization (IVF)'),
-(11, 'Intracytoplasmic Sperm Injection (ICSI)'),
-(12, 'Frozen Embryo Transfer (FET)'),
-(13, 'Gamete Intrafallopian Transfer (GIFT)'),
-(14, 'Zygote Intrafallopian Transfer (ZIFT)'),
-(15, 'Assisted Hatching'),
-(16, 'Laparoscopy'),
-(17, 'Hysteroscopy'),
-(18, 'Myomectomy'),
-(19, 'Tuboplasty / Tubal Recanalization'),
-(20, 'Polypectomy'),
-(21, 'Adhesiolysis'),
-(22, 'Ovarian Cystectomy'),
-(23, 'Endometriosis Surgery'),
-(24, 'Ovarian Drilling'),
-(25, 'Egg Donation'),
-(26, 'Embryo Donation'),
-(27, 'Oocyte Cryopreservation (Egg Freezing)'),
-(28, 'Embryo Cryopreservation (Embryo Freezing)'),
-(29, 'Thyroid Therapy'),
-(30, 'Hyperprolactinemia Treatment'),
-(31, 'Immunotherapy for Infertility'),
-(32, 'Antibiotic / Infection Treatment'),
-(33, 'Lifestyle & Nutrition Counseling'),
-(34, 'Nutritional Supplementation (Folate, Antioxidants, Vitamins)');
-
-
-UPDATE `u985266191_pregajourney`.`procedures` SET `name` = 'Clomiphene Citrate Therapy' WHERE (`id` = '1');
-UPDATE `u985266191_pregajourney`.`procedures` SET `name` = 'Clomiphene Citrate Therapy' WHERE (`id` = '2');
-UPDATE `u985266191_pregajourney`.`procedures` SET `name` = 'Gonadotropin Injections (FSH/LH)' WHERE (`id` = '3');
-
-
-
-
-ALTER TABLE `u985266191_pregajourney`.`hospitals` 
-ADD COLUMN `about` LONGTEXT NULL AFTER `city_id`;
-
-
-
-
-INSERT INTO u985266191_pregajourney.areas (name, city_id)
-VALUES
-('Sadar Bazar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Ajmeri Gate', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Karol Bagh', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Chandni Chowk', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Connaught Place', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Indraprastha Estate', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Jhandewalan', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Chawri Bazar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Mandi House', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Daryaganj', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('New Delhi')))),
-('Shahdara', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('New Ashok Nagar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Krishna Nagar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Mandawali', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Indraprastha Extension', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Patparganj', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Anand Vihar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Geeta Colony', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Seelampur', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Preet Vihar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
-('Trilokpuri', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('East Delhi')))),
--- Continue with other areas
-('Greater Kailash I', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('South Delhi')))),
-('Chittaranjan Park', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('South Delhi')))),
-('C R Park', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('South Delhi')))),
-('East Of Kailash', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('South Delhi')))),
--- Continue for the rest of the areas
-('Vishnu Garden', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('West Delhi')))),
-('Tilak Nagar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('West Delhi')))),
-('Paschim Vihar', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('West Delhi')))),
--- Add more areas from South West Delhi, etc.
-('Delhi Cantonment', (SELECT id FROM u985266191_pregajourney.cities WHERE TRIM(LOWER(name)) = TRIM(LOWER('South West Delhi'))));
-
-
-
-
-UPDATE `u985266191_pregajourney`.`services` SET `name` = 'Ovulation Induction (OI) / Ovarian Stimulation' WHERE (`id` = '1');
-UPDATE `u985266191_pregajourney`.`services` SET `name` = 'Intrauterine Insemination (IUI)' WHERE (`id` = '2');
-UPDATE `u985266191_pregajourney`.`services` SET `name` = 'In Vitro Fertilization (IVF)' WHERE (`id` = '3');
-UPDATE `u985266191_pregajourney`.`services` SET `name` = 'Intracytoplasmic Sperm Injection (ICSI)' WHERE (`id` = '4');
-
-
-
-
-
-
-
-
-
-
-
-
-INSERT INTO u985266191_pregajourney.services (id, name) VALUES
-(5, 'Egg Freezing / Fertility Preservation'),
-(6, 'Preimplantation Genetic Testing (PGT)'),
-(7, 'Assisted Hatching (AH)'),
-(8, 'Blastocyst Culture and Transfer'),
-(9, 'Altruistic Surrogacy'),
-(10, 'Hysteroscopy (Minimally Invasive Surgery)'),
-(11, 'Laparoscopy (Minimally Invasive Surgery)'),
-(12, 'PCOD/PCOS Treatment'),
-(13, 'Laser Assisted Hatching'),
-(14, 'Personalized Embryo Transfer'),
-(15, 'Egg Donation'),
-(16, 'Endometriosis Treatment'),
-(17, 'Test Tube Baby'),
-(18, 'Testicular Sperm Extraction (TESE / Micro-TESE)'),
-(19, 'Sperm Freezing / Fertility Preservation'),
-(20, 'Surgical Corrections (Varicocelectomy, Vasectomy Reversal)'),
-(21, 'ICSI (Male Infertility)'),
-(22, 'Varicocele Treatment'),
-(23, 'IVF-ICSI Treatment'),
-(24, 'MESA-TESA'),
-(25, 'Andrology'),
-(26, 'Microscopic Testicular Sperm Extraction'),
-(27, 'DNA fragmentation'),
-(28, 'IMSI Treatment'),
-(29, 'PICCI'),
-(30, 'Oligospermia Treatment'),
-(31, 'Testicular Biopsy'),
-(32, 'Menstrual Disorders Treatment'),
-(33, 'Polycystic Ovary Syndrome (PCOS)'),
-(34, 'Endometriosis Treatment'),
-(35, 'Uterine Fibroid Treatment'),
-(36, 'Antenatal Care'),
-(37, 'High-Risk Pregnancy'),
-(38, 'Fetal Monitoring & Screening'),
-(39, 'Labor & Delivery'),
-(40, 'Cesarean Section (C-section)'),
-(41, 'Postnatal Care'),
-(42, 'Pregnancy Complications'),
-(43, 'Preterm Birth'),
-(44, 'Fetal Therapy'),
-(45, 'Psychological Counseling for Couples'),
-(46, 'Fertility Assessment & Diagnostic Testing');
-
-
-
-ALTER TABLE `u985266191_pregajourney`.`clinics` 
-CHANGE COLUMN `area` `area_id` INT NULL DEFAULT NULL ;
-
-
-ALTER TABLE `u985266191_pregajourney`.`hospitals` 
-CHANGE COLUMN `area` `area_id` INT NULL DEFAULT NULL ;
-
-
-
-
-
-
-UPDATE `u985266191_pregajourney`.`hospitals` SET `about` = 'All India Institute of Medical Sciences, New Delhi, is a public medical research university and hospital in New Delhi, India. The institute is governed by the AIIMS Act, 1956 and operates autonomously under the Ministry of Health and Family Welfare.', `area_id` = '1' WHERE (`id` = '1');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('2', 'Gaudium IVF', 'gadiumivf.jpg', '24x7', '085278 58585', '1', 'http://www.gaudiumivfcentre.com', '51, Block B1, Janakpuri East, New Delhi, Delhi 110058', '1', 'Gaudium IVF Centre in Delhi is one of India’s leading fertility & IVF clinics. Founded by Dr. Manika Khanna in 2009, we have helped thousands of couples from Delhi, NCR, and 30+ countries achieve parenthood.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('3', 'SCI IVF Hospital', 'sciivfhospital.jpg', ' Mon – Sat: 09:00 AM - 07:00 PM', '9267937367', '8882563400', 'www.sciivf.in', 'S 21, Greater Kailash 1, New M-Block Market, New Delhi – 110048', '1', 'At SCI IVF, the most advanced fertility treatment technologies and caring staff come together to help you realize your dream of growing your family. We’ve put an emphasis on the latest reproductive technology, and that means we provide all kinds of fertility treatments under one roof, ranging from IUI and IVF to advanced protocols like ICSI and fertility preservation.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('4', 'RISAA IVF', 'risaaivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '9289159398', '1', 'risaaivf.com', 'H-6, Green Park Main, Madhok Appartments, Block H, Green Park Extension, Green Park, New Delhi, Delhi 110016', '1', 'RISAA IVF offers world-class fertility solutions designed for success. With cutting-edge technology, advanced labs, and expert care, our services ensure the highest standards in reproductive treatment. Every procedure is tailored for safety, precision, and effectiveness, maximizing your chances of success. Trust us for seamless, result-driven fertility care that brings you closer to parenthood.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('5', 'Sapling IVF', 'saplingivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '9289159398', '1', 'www.saplingivf.com', 'Metro Pillar No. 754, Sapling hospitals, Najafgarh Rd, Block D, Mansa Ram Park, Uttam Nagar, Delhi, 110059', '1', 'Sapling IVF was founded with the intention of enabling women to achieve their parenthood goals. Sapling is the greatest fertility clinic and one of the best IVF Centres in Delhi and Gurgaon, India. It has given thousands of families all over the world a lifetime of happiness.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('6', 'Mother Divine Fertility', 'motherdevinefertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '093119 88500', '1', 'motherdivinefertility.com', 'B, 16, Nehru Place Flyover, opp. Devika Tower, Greater Kailash-1, Chirag Enclave, Greater Kailash, New Delhi, Delhi 110048', '1', 'Mother Divine Fertility is the top rated IVF centre in Delhi, with a staff of highly skilled professionals committed to assisting couples in realizing their goal of becoming parents. Our center ensures that patients receive the best care possible, customized to meet their individual needs, by fusing cutting-edge technology with individualized attention.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('7', 'Laimaa Fertility', '  laimaafertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '088829 10177', '1', '1', 'E-580, Block E, Part-2, Greater Kailash, New Delhi, Delhi 110048', '1', 'Laimaa Healthcare is your one-stop destination for achieving your dream of parenthood. We offer a comprehensive range of expert fertility services, tailored to address your unique needs. Ready to embark on your journey to parenthood? Contact Laimaa Healthcare today and let us help you turn your dream into reality.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('8', 'Nova IVF Fertility Center', 'novaivffertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '081471 31882', ' 81471 35025', 'customersupport@novaivffertility.com', 'Upper ground Floor, E 214, Block E, East of Kailash, New Delhi, Delhi 110065', '1', 'Nova IVF Center in South Delhi, the best IVF Center in Delhi, combines cutting-edge technology with compassionate care to help you achieve parenthood. Our skilled staff, comprising the best IVF doctors in Delhi, creates personalised treatment plans and provides fertility treatments, such as IVF-ICSI treatment, IUI, TESA, PESA, and fertility preservation.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('9', 'Cloudnine Hospital', 'cloudninecare.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '099728 99728', '1', 'info@cloudninecare.com', 'A-18, Lala Lajpat Rai Rd, Block A, Kailash Colony, Greater Kailash, New Delhi, Delhi 110048', '1', 'At Cloudnine, we believe that a child is life’s greatest gift and pregnancy is one of the most magical experiences nature can offer. Cloudnine has expanded its reach to multiple facilities across India while continuing to maintain and excel in international standards of care. It is still going strong with plans to reach every woman and child across the country.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('10', 'Apollo Fertility', 'apollofertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '095820 29976', '1', 'contactus@apollofertility.com', '1st Floor, Plot no. A-2, Outer Ring Rd, Greater Kailash-1, Chirag Enclave, Greater Kailash, New Delhi, Delhi 110048', '1', 'Apollo Fertility is considered the best IVF center in Chirag Enclave to treat infertility in couples desiring to step into the journey of parenthood. Our center comprises a team of experienced clinicians, counselors, and embryologists and is equipped with modern technology.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('11', 'Faithstep Fertility Clinic', 'faithstepclinic.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '92118 99590', '1171367119', 'faithstepclinic@gmail.com', '4C/2, New Rohtak Rd, opposite Liberty Cinema, Block 4C, Karol Bagh, New Delhi, Delhi, 110005', '1', 'Embark on your journey to parenthood with Faithstep Fertility Clinic, opening in the heart of New Delhi near Liberty Cinema on New Rohtak Road, Karol Bagh. Launching August 1st, 2025, our clinic is dedicated to providing compassionate and advanced fertility care to individuals and couples throughout Delhi, India.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('12', 'Babysoon IVF Centre', 'babysoonindia.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '098566 65666', '1', 'babysoonindia@gmail.com', 'Bali Nursing Home - 20 B/3, D.B Gupta Road, Karol Bagh, New Delhi, Delhi 110005', '1', 'Baby Soon IVF Center (established in 2009) is one of the best IVF clinics in Delhi, offering affordable fertility treatments and specializing in IVF, egg freezing, and infertility treatments. With over 30,000 successful IVF pregnancies and a team of 50+ experienced doctors, we provide personalized care to help couples achieve their parenthood dreams. Our state-of-the-art IVF clinic ensures high success rates and expert support throughout your fertility journey.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('13', 'Indira IVF Fertility Centre', 'IndiraIVF.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '1', '1', 'help@indiraivf.in', 'D-11 / 145, Ground Floor, Block-D, near Rohini East Metro Station, opp. Metro Pillor 391, Pocket 11, Sector 8, Rohini, New Delhi, Delhi, 110085', '1', 'Indira IVF Rohini is the best IVF clinic & fertility center providing infertility treatment, test tube baby care & world-class IVF solutions with 1,75,000+ successful pregnancies. Indira IVF Centre in Rohini is an advanced fertility clinic with world-class technologies, IVF specialist doctors, high-end control and patient safety, and affordable cost of all ART (Assisted Reproductive Technology) treatment.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('14', 'Baby Joy Fertility & IVF Centre', 'babyjoyivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '095990 66436', '1', 'counselling@babyjoyivf.com', 'A-1/5, 3rd Floor, Prashant Vihar, Main, Outer Ring Rd, Rohini, Delhi, 110085', '1', 'Baby Joy is a leading fertility centre dedicated to helping couples achieve their dream of parenthood. With advanced technology, ethical practices, and expert specialists, we offer comprehensive infertility, IVF, egg donation, and surrogacy solutions under one roof. Our mission is to provide world-class, transparent, and affordable fertility care with high success rates. At Baby Joy, we strive to touch your lives by helping you create life!', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('15', 'Delhi IVF & Fertility Research Centre', 'delhiivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '1', '1', 'newquery@delhi-ivf.com', 'METRO PILLAR NO 387, C9/124, Halar Rd, Pocket 9, Sector 8C, Rohini, Delhi, 110085', '1', 'At Delhi IVF & Fertility Research Centre, our vision is to create a world where the dream of parenthood becomes a reality for every couple. Delhi IVF & Fertility Research Centre dream of a world where every couple can experience the joy of parenthood, empowered by our cutting-edge techniques and technology and backed up by compassionate care. Our vision has been and continues to be a beacon of excellence, setting international standards in infertility treatments and patient support.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('16', 'Mothers Lap IVF Centre', 'MothersLap. jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '1', '1', '1', '2nd Floor, 47, Harsh Vihar, Pitampura, Delhi, 110034', '1', 'Dr. Shobha Gupta, a highly esteemed infertility specialist, holds an impressive list of qualifications, including MBBS from LHMC, DGO from MAMC, and an MD in Obstetrics and Gynecology. Her expertise extends further with specialized training in Assisted Reproductive Technology (ART) at Justus Leibig University in Germany. Dr. Gupta is an active member of prestigious medical associations, such as FOGSI, AOGD, IFS, and IMA, and serves as a Consultant Infertility Specialist.', '1', 'active');
-INSERT INTO `u985266191_pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('17', 'Origyn Fertility and IVF', 'OrigynFertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '080808 09084', '097172 52619', 'info@origynivf.com', '4Th floor, above Max Hospital HB Twin Towers Near TV Tower Wazirpur District, Centre Pitampura, New Delhi, Delhi 110034', '1', 'Our IVF centre has state-of-the-art facilities with equipment from the leaders in the world like incubators from Germany (Heracell), ICSI micromanipulator from Japan (Narashige), Microscopes from Japan (Nikon) etc. The world-class facilities along with competent staff have enabled us to achieve an outstanding success rate. Our In Vitro Fertilization (IVF) results and pregnancy rates are among the best.', '1', 'active');
-
-
-
-
-UPDATE `u985266191_pregajourney`.`hospitals`
-SET `about` = 'All India Institute of Medical Sciences, New Delhi, is a public medical research university and hospital in New Delhi, India. The institute is governed by the AIIMS Act, 1956 and operates autonomously under the Ministry of Health and Family Welfare.',
-    `area_id` = '1'
-WHERE (`id` = '1');
-
-
-
-
-INSERT INTO `u985266191_pregajourney`.`hospitals`
-(`id`, `name`, `image`, `timing`, `phone_1`, `phone_2`, `website`, `address`, `city_id`, `about`, `area_id`, `status`)
-VALUES
-('2', 'Gaudium IVF', 'gadiumivf.jpg', '24x7', '085278 58585', '1', 'http://www.gaudiumivfcentre.com', '51, Block B1, Janakpuri East, New Delhi, Delhi 110058', '1', 'Gaudium IVF Centre in Delhi is one of India’s leading fertility & IVF clinics. Founded by Dr. Manika Khanna in 2009, we have helped thousands of couples from Delhi, NCR, and 30+ countries achieve parenthood.', '1', 'active'),
-('3', 'SCI IVF Hospital', 'sciivfhospital.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '9267937367', '8882563400', 'www.sciivf.in', 'S 21, Greater Kailash 1, New M-Block Market, New Delhi – 110048', '1', 'At SCI IVF, the most advanced fertility treatment technologies and caring staff come together to help you realize your dream of growing your family. We’ve put an emphasis on the latest reproductive technology, and that means we provide all kinds of fertility treatments under one roof, ranging from IUI and IVF to advanced protocols like ICSI and fertility preservation.', '1', 'active'),
-('4', 'RISAA IVF', 'risaaivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '9289159398', '1', 'risaaivf.com', 'H-6, Green Park Main, Madhok Appartments, Block H, Green Park Extension, Green Park, New Delhi, Delhi 110016', '1', 'RISAA IVF offers world-class fertility solutions designed for success. With cutting-edge technology, advanced labs, and expert care, our services ensure the highest standards in reproductive treatment. Every procedure is tailored for safety, precision, and effectiveness, maximizing your chances of success. Trust us for seamless, result-driven fertility care that brings you closer to parenthood.', '1', 'active'),
-('5', 'Sapling IVF', 'saplingivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '9289159398', '1', 'www.saplingivf.com', 'Metro Pillar No. 754, Sapling hospitals, Najafgarh Rd, Block D, Mansa Ram Park, Uttam Nagar, Delhi, 110059', '1', 'Sapling IVF was founded with the intention of enabling women to achieve their parenthood goals. Sapling is the greatest fertility clinic and one of the best IVF Centres in Delhi and Gurgaon, India. It has given thousands of families all over the world a lifetime of happiness.', '1', 'active'),
-('6', 'Mother Divine Fertility', 'motherdevinefertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '093119 88500', '1', 'motherdivinefertility.com', 'B, 16, Nehru Place Flyover, opp. Devika Tower, Greater Kailash-1, Chirag Enclave, Greater Kailash, New Delhi, Delhi 110048', '1', 'Mother Divine Fertility is the top rated IVF centre in Delhi, with a staff of highly skilled professionals committed to assisting couples in realizing their goal of becoming parents. Our center ensures that patients receive the best care possible, customized to meet their individual needs, by fusing cutting-edge technology with individualized attention.', '1', 'active'),
-('7', 'Laimaa Fertility', 'laimaafertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '088829 10177', '1', '1', 'E-580, Block E, Part-2, Greater Kailash, New Delhi, Delhi 110048', '1', 'Laimaa Healthcare is your one-stop destination for achieving your dream of parenthood. We offer a comprehensive range of expert fertility services, tailored to address your unique needs. Ready to embark on your journey to parenthood? Contact Laimaa Healthcare today and let us help you turn your dream into reality.', '1', 'active'),
-('8', 'Nova IVF Fertility Center', 'novaivffertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '081471 31882', '81471 35025', 'customersupport@novaivffertility.com', 'Upper ground Floor, E 214, Block E, East of Kailash, New Delhi, Delhi 110065', '1', 'Nova IVF Center in South Delhi, the best IVF Center in Delhi, combines cutting-edge technology with compassionate care to help you achieve parenthood. Our skilled staff, comprising the best IVF doctors in Delhi, creates personalised treatment plans and provides fertility treatments, such as IVF-ICSI treatment, IUI, TESA, PESA, and fertility preservation.', '1', 'active'),
-('9', 'Cloudnine Hospital', 'cloudninecare.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '099728 99728', '1', 'info@cloudninecare.com', 'A-18, Lala Lajpat Rai Rd, Block A, Kailash Colony, Greater Kailash, New Delhi, Delhi 110048', '1', 'At Cloudnine, we believe that a child is life’s greatest gift and pregnancy is one of the most magical experiences nature can offer. Cloudnine has expanded its reach to multiple facilities across India while continuing to maintain and excel in international standards of care. It is still going strong with plans to reach every woman and child across the country.', '1', 'active'),
-('10', 'Apollo Fertility', 'apollofertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '095820 29976', '1', 'contactus@apollofertility.com', '1st Floor, Plot no. A-2, Outer Ring Rd, Greater Kailash-1, Chirag Enclave, Greater Kailash, New Delhi, Delhi 110048', '1', 'Apollo Fertility is considered the best IVF center in Chirag Enclave to treat infertility in couples desiring to step into the journey of parenthood. Our center comprises a team of experienced clinicians, counselors, and embryologists and is equipped with modern technology.', '1', 'active'),
-('11', 'Faithstep Fertility Clinic', 'faithstepclinic.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '92118 99590', '1171367119', 'faithstepclinic@gmail.com', '4C/2, New Rohtak Rd, opposite Liberty Cinema, Block 4C, Karol Bagh, New Delhi, Delhi, 110005', '1', 'Embark on your journey to parenthood with Faithstep Fertility Clinic, opening in the heart of New Delhi near Liberty Cinema on New Rohtak Road, Karol Bagh. Launching August 1st, 2025, our clinic is dedicated to providing compassionate and advanced fertility care to individuals and couples throughout Delhi, India.', '1', 'active'),
-('12', 'Babysoon IVF Centre', 'babysoonindia.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '098566 65666', '1', 'babysoonindia@gmail.com', 'Bali Nursing Home - 20 B/3, D.B Gupta Road, Karol Bagh, New Delhi, Delhi 110005', '1', 'Baby Soon IVF Center (established in 2009) is one of the best IVF clinics in Delhi, offering affordable fertility treatments and specializing in IVF, egg freezing, and infertility treatments. With over 30,000 successful IVF pregnancies and a team of 50+ experienced doctors, we provide personalized care to help couples achieve their parenthood dreams. Our state-of-the-art IVF clinic ensures high success rates and expert support throughout your fertility journey.', '1', 'active'),
-('13', 'Indira IVF Fertility Centre', 'IndiraIVF.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '1', '1', 'help@indiraivf.in', 'D-11 / 145, Ground Floor, Block-D, near Rohini East Metro Station, opp. Metro Pillor 391, Pocket 11, Sector 8, Rohini, New Delhi, Delhi, 110085', '1', 'Indira IVF Rohini is the best IVF clinic & fertility center providing infertility treatment, test tube baby care & world-class IVF solutions with 1,75,000+ successful pregnancies. Indira IVF Centre in Rohini is an advanced fertility clinic with world-class technologies, IVF specialist doctors, high-end control and patient safety, and affordable cost of all ART (Assisted Reproductive Technology) treatment.', '1', 'active'),
-('14', 'Baby Joy Fertility & IVF Centre', 'babyjoyivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '095990 66436', '1', 'counselling@babyjoyivf.com', 'A-1/5, 3rd Floor, Prashant Vihar, Main, Outer Ring Rd, Rohini, Delhi, 110085', '1', 'Baby Joy is a leading fertility centre dedicated to helping couples achieve their dream of parenthood. With advanced technology, ethical practices, and expert specialists, we offer comprehensive infertility, IVF, egg donation, and surrogacy solutions under one roof. Our mission is to provide world-class, transparent, and affordable fertility care with high success rates. At Baby Joy, we strive to touch your lives by helping you create life!', '1', 'active'),
-('15', 'Delhi IVF & Fertility Research Centre', 'delhiivf.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '1', '1', 'newquery@delhi-ivf.com', 'METRO PILLAR NO 387, C9/124, Halar Rd, Pocket 9, Sector 8C, Rohini, Delhi, 110085', '1', 'At Delhi IVF & Fertility Research Centre, our vision is to create a world where the dream of parenthood becomes a reality for every couple. Delhi IVF & Fertility Research Centre dream of a world where every couple can experience the joy of parenthood, empowered by our cutting-edge techniques and technology and backed up by compassionate care. Our vision has been and continues to be a beacon of excellence, setting international standards in infertility treatments and patient support.', '1', 'active'),
-('16', 'Mothers Lap IVF Centre', 'MothersLap.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '1', '1', '1', '2nd Floor, 47, Harsh Vihar, Pitampura, Delhi, 110034', '1', 'Dr. Shobha Gupta, a highly esteemed infertility specialist, holds an impressive list of qualifications, including MBBS from LHMC, DGO from MAMC, and an MD in Obstetrics and Gynecology. Her expertise extends further with specialized training in Assisted Reproductive Technology (ART) at Justus Leibig University in Germany. Dr. Gupta is an active member of prestigious medical associations, such as FOGSI, AOGD, IFS, and IMA, and serves as a Consultant Infertility Specialist.', '1', 'active'),
-('17', 'Origyn Fertility and IVF', 'OrigynFertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '080808 09084', '097172 52619', 'info@origynivf.com', '4Th floor, above Max Hospital HB Twin Towers Near TV Tower Wazirpur District, Centre Pitampura, New Delhi, Delhi 110034', '1', 'Our IVF centre has state-of-the-art facilities with equipment from the leaders in the world like incubators from Germany (Heracell), ICSI micromanipulator from Japan (Narashige), Microscopes from Japan (Nikon) etc. The world-class facilities along with competent staff have enabled us to achieve an outstanding success rate. Our In Vitro Fertilization (IVF) results and pregnancy rates are among the best.', '1', 'active');
-
-
-
-
-CREATE TABLE `pregajourney`.`blog_category` (
-  `id` INT NOT NULL AUTO_INCREMENT,
-  `name` TEXT NULL,
-  `slug` TEXT NULL,
-  `status` TINYINT NULL,
-  `created_at` VARCHAR(255) NULL,
-  `created_by` VARCHAR(255) NULL,
-  `updated_at` VARCHAR(255) NULL,
-  `updated_by` VARCHAR(255) NULL,
-  PRIMARY KEY (`id`));
-
-
-INSERT INTO blog_category (name, slug, status, created_at, created_by)
-VALUES 
-('IVF', 'ivf', 1, NOW(), 'admin');
-
-INSERT INTO blog_category (name, slug, status, created_at, created_by)
-VALUES 
-('ICSI', 'icsi', 1, NOW(), 'admin');
-
-INSERT INTO blog_category (name, slug, status, created_at, created_by)
-VALUES 
-('Male Infertility', 'male-infertility', 1, NOW(), 'admin');
-
-INSERT INTO blog_category (name, slug, status, created_at, created_by)
-VALUES 
-('Ovarian Induction', 'ovarian-induction', 1, NOW(), 'admin');
-
-ALTER TABLE `pregajourney`.`blog_category` 
-RENAME TO  `pregajourney`.`blog_categories` ;
-
-
-
-
-
-CREATE TABLE enquiries (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  email VARCHAR(255) NOT NULL,
-  phone VARCHAR(50),
-  service VARCHAR(255),
-  message TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-
-INSERT INTO enquiries (name, email, phone, service, message)
-VALUES
-('Rahul Sharma', 'rahul@example.com', '9876543210', 'Website Development', 'I need a business website for my company.'),
-('Priya Verma', 'priya.verma@example.com', '9123456780', 'Mobile App', 'Looking for an Android & iOS app.'),
-('Amit Kumar', 'amitk88@example.com', '9988776655', 'SEO Services', 'Need SEO for my ecommerce website.'),
-('Sneha Patil', 'sneha.patil@example.com', '9090909090', 'Digital Marketing', 'Want to increase leads through ads.'),
-('Vikas Mehra', 'vikasm@example.com', '7890654321', 'Graphic Design', 'Need logo + branding package.'),
-('Anjali Singh', 'anjali.singh@example.com', '9876501234', 'Content Writing', 'Need blogs and website content.'),
-('Suresh Yadav', 'sureshy@example.com', '9900112233', 'Website Maintenance', 'My website needs regular updates.'),
-('Neha Kapoor', 'nehak@example.com', '9877612345', 'CRM Development', 'Need CRM for leads and sales tracking.'),
-('Deepak Rao', 'deepak.rao@example.com', '8899776655', 'Hosting Support', 'Need help migrating my website hosting.'),
-('Aarav Gupta', 'aarav.g@example.com', '7788996655', 'Consultation', 'Want to discuss project requirements.');
-
-
-CREATE TABLE pregajourney.posts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  slug VARCHAR(255) NOT NULL UNIQUE,
-  content TEXT,
-  image VARCHAR(255),
-  category_id INT,
-  status ENUM('active', 'inactive') DEFAULT 'active',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-
-INSERT INTO posts (name, slug, content, image, category_id, status)
-VALUES
-('How to Maintain a Healthy Pregnancy', 'healthy-pregnancy-tips', '<p>Follow these daily tips for a healthy pregnancy...</p>', 'uploads/posts/healthy-pregnancy.jpg', 1, 'active'),
-
-('Top Foods to Eat During Pregnancy', 'top-foods-during-pregnancy', '<p>Discover the best foods for expecting mothers...</p>', 'uploads/posts/pregnancy-foods.jpg', 1, 'active'),
-
-('Signs You Should Visit a Gynecologist', 'visit-gynecologist-signs', '<p>Here are key signs it’s time to consult your doctor...</p>', 'uploads/posts/gynecologist-signs.jpg', 2, 'inactive'),
-
-('Best Exercises for Expecting Moms', 'exercises-for-pregnant-women', '<p>Light exercises can keep you and your baby fit...</p>', 'uploads/posts/exercises.jpg', 3, 'active'),
-
-('Postpartum Care Tips for New Mothers', 'postpartum-care-tips', '<p>Learn essential self-care routines after delivery...</p>', 'uploads/posts/postpartum-care.jpg', 1, 'active');
-
-
-
-ALTER TABLE pregajourney.posts
-ADD COLUMN short_description TEXT AFTER content,
-ADD COLUMN seo_title VARCHAR(255) DEFAULT NULL AFTER short_description,
-ADD COLUMN seo_keywords VARCHAR(500) DEFAULT NULL AFTER seo_title,
-ADD COLUMN seo_description VARCHAR(500) DEFAULT NULL AFTER seo_keywords,
-ADD COLUMN json_schema JSON DEFAULT NULL AFTER seo_description;
-
-
-UPDATE posts SET
-  short_description = 'Daily health habits for a safe and happy pregnancy.',
-  seo_title = 'Healthy Pregnancy Tips | Prega Journey',
-  seo_keywords = 'pregnancy, health tips, baby care, wellness',
-  seo_description = 'Follow easy daily pregnancy care tips for better health and safety.',
-  json_schema = JSON_OBJECT('type', 'article', 'author', 'Prega Journey')
-WHERE id = 1;
-
-UPDATE posts SET
-  short_description = 'Best foods for expecting mothers for energy and baby growth.',
-  seo_title = 'Top Foods During Pregnancy | Prega Journey',
-  seo_keywords = 'pregnancy diet, nutrition, food list, baby health',
-  seo_description = 'Learn about healthy foods to eat during pregnancy for your baby’s growth.',
-  json_schema = JSON_OBJECT('type', 'article', 'author', 'Prega Journey')
-WHERE id = 2;
-
-UPDATE posts SET
-  short_description = 'Know when it’s time to consult a gynecologist.',
-  seo_title = 'When to Visit a Gynecologist | Prega Journey',
-  seo_keywords = 'gynecologist, pregnancy care, doctor visit, women health',
-  seo_description = 'Find key signs that tell you it’s time to see your gynecologist.',
-  json_schema = JSON_OBJECT('type', 'article', 'author', 'Prega Journey')
-WHERE id = 3;
-
-UPDATE posts SET
-  short_description = 'Simple exercises for moms to stay active and safe during pregnancy.',
-  seo_title = 'Exercises for Pregnant Women | Prega Journey',
-  seo_keywords = 'pregnancy exercise, yoga, fitness, baby care',
-  seo_description = 'Best safe pregnancy exercises to stay active and reduce stress.',
-  json_schema = JSON_OBJECT('type', 'article', 'author', 'Prega Journey')
-WHERE id = 4;
-
-UPDATE posts SET
-  short_description = 'Essential tips for new mothers after childbirth.',
-  seo_title = 'Postpartum Care Tips | Prega Journey',
-  seo_keywords = 'postpartum care, new mothers, recovery, baby care',
-  seo_description = 'Learn essential care and recovery tips after delivery.',
-  json_schema = JSON_OBJECT('type', 'article', 'author', 'Prega Journey')
-WHERE id = 5;
-
-
-UPDATE `pregajourney`.`posts` SET `content` = '<p>Here are key signs it’s time to consult your doctor...</p>' WHERE (`id` = '4');
-UPDATE `pregajourney`.`posts` SET `content` = '<p>Here are key signs it’s time to consult your doctor...</p>' WHERE (`id` = '5');
-
-
-
-
-
-
-
-
-
-
-
-//doctor data 
-
-
-INSERT INTO doctors 
-(name, specialization_id, degree, experience_years, registration_number, about, phone_1, phone_2, email, profile_image, address, city_id, slug, area_id, rating, consultation_fee, status)
-VALUES
-('Dr. Mona Dahiya', 1, 'MBBS, MD', 25, 'REG001', 'Dr Mona Dahiya is an IVF specialist with over 25 Years of Global experience. Known as one of Best IVF doctor in India, she has over 500 Publications in International Journals for Egg Freezing, Ovulation Test, endometriosis IVF, Embryo Transfer, laser assisted hatching, blastocyst culture & transfer, preimplantation genetic testing, Causes of Infertility & Tubal Reversal.', '092679 82924', 'dummy', 'info@drmonadahiya.com', 'drmonadahiya.jpg', '145, Arun Vihar, Sector 37, Noida, Uttar Pradesh 201303', 1, 'dr-mona-dahiya', 1, 5.00, 500.00, 'active'),
-
-('Dr. Shivani Sachdev Gour', 1, 'MBBS, MD - Obstetrics & Gynaecology, DNB - Obstetrics & Gynecology', 24, 'REG002', 'Dr. Shivani Sachdev Gour is the founder and director of SCI Healthcare Hospital and Multispecialty Centre and Consultant Fertility Specialist. Dr. Sachdev-Gour has practiced as an Obstetrician and Gynecologist, and Infertility Specialist for the past 16 years.', '8882563400', 'dummy', 'sciivfhospitalindia@gmail.com', 'drshivanigour.jpg', 'S-21, Greater Kailash-1, New Delhi - 110048', 1, 'dr-shivani-sachdev-gour', 1, 5.00, 500.00, 'active'),
-
-('Dr. Kaberi Banerjee', 1, 'MBBS, MD (AIIMS), FRCOG, MRCOG (UK)', 15, 'REG003', 'Dr. Kaberi Banerjee is a renowned infertility specialist and Best IVF doctor in Delhi, India known for her expertise in treating both male and female infertility issues.', '098712 50235', 'dummy', 'contact@advancefertility.in', 'kaberibanerjee.jpg', '6, Ring Rd, Vikram Vihar, Lajpat Nagar IV, Lajpat Nagar, New Delhi, Delhi 110049', 1, 'dr-kaberi-banerjee', 1, 5.00, 500.00, 'active'),
-
-('Dr. Prerna Gupta', 1, 'MBBS (AIIMS), MD (AIIMS), (Gold Medalist), DNB, MNAMS, MRCOG, (UK)', 15, 'REG004', 'Dr. Prerna Gupta is the best ivf doctor in Delhi. She has done her MBBS as well as MD from AIIMS, Delhi.', '099107 24959', 'dummy', 'info@drprernagupta.com', 'drprernagupta.jpg', 'D-8, Lower Ground Floor, Hauz Khas, New Delhi, Delhi 110016', 1, 'dr-prerna-gupta', 1, 5.00, 500.00, 'active'),
-
-('Dr. Lavi Sindhu', 1, 'MBBS, MS, DNB', 15, 'REG005', 'Dr. Lavi Sindhu has completed her MBBS and MD in Obstetrics and Gynaecology from Vardhaman Medical College and Safdarjung Hospital.', '099728 99728', 'dummy', 'info@cloudninecare.com', 'lavisindhu.jpg', 'A-18, Lala Lajpat Rai Rd, Block A, Kailash Colony 1, Greater Kailash, New Delhi, Delhi 110048', 1, 'dr-lavi-sindhu', 1, 5.00, 500.00, 'active'),
-
-('Dr. Bhavna Banga', 1, 'MS, Fellow in Fertility & IVF', 18, 'REG006', 'Dr. Bhavna Banga is an internationally trained dedicated fertility & IVF expert with 18 Years of experience.', '099728 99728', 'dummy', 'dummy', 'bhavnabanga.jpg', 'Chamber 2, Cloudnine Hospital, Greater Kailash, New Delhi', 1, 'dr-bhavna-banga', 1, 5.00, 500.00, 'active'),
-
-('Dr. Sandeep Talwar', 1, 'MBBS, DNB - Obstetrics & Gynecology', 30, 'REG007', 'Dr. Sandeep Talwar is widely regarded as the best IVF doctor in Delhi and a trusted Infertility specialist.', '098103 06455', 'dummy', 'sonutalwar1963@gmail.com', 'drsandeeptalwar.jpg', 'Ground Floor, E-214, East of Kailash, New Delhi', 1, 'dr-sandeep-talwar', 1, 5.00, 500.00, 'active'),
-
-('Dr. Neha Khandelwal', 1, 'MBBS, MS - Obstetrics & Gynaecology', 21, 'REG008', 'Dr. Neha Khandelwal is Director, Obstetrics and Gynaecology, Cloudnine Hospital, Kailash Colony.', '9711179194', 'dummy', 'drnehakpandit@gmail.com', 'drnehakpandit.jpg', 'R-88 basement, Greater Kailash-1, New Delhi', 1, 'dr-neha-khandelwal', 1, 5.00, 500.00, 'active'),
-
-('Dr. Sanjida Yasmin', 1, 'MBBS, DGO, DNB - Obstetrics & Gynecology', 22, 'REG009', 'Dr. Sanjida Yasmin is a Gynaecologist and Obstetrician with 17 years of experience.', '099582 66110', 'dummy', 'dummy', 'drsanjidayasmin.jpg', 'A-2, GF, Apollo Cradle Royale, Greater Kailash, New Delhi', 1, 'dr-sanjida-yasmin', 1, 5.00, 500.00, 'active'),
-
-('Dr. Arushi Sethi', 1, 'MBBS', 10, 'REG010', 'Dr Arushi Sethi is the Founder of Golden IVF, Rohini.', '099993 75430', 'dummy', 'reception@drarushisethigoldenivf.com', 'drarushisethi.jpg', 'A-776-777, Sector 2, Rohini, Delhi', 1, 'dr-arushi-sethi', 1, 5.00, 500.00, 'active'),
-
-('Dr. Pooja Uniyal', 1, 'MBBS, MS, DNB', 10, 'REG011', 'Dr Pooja Uniyal is an internationally trained medical professional at Cloudnine Fertility.', '099728 99728', 'dummy', 'info@cloudninecare.com', 'drpoojauniyal.jpg', 'Metro Pillar 418, Cloudnine Fertility, Rohini', 1, 'dr-pooja-uniyal', 1, 5.00, 500.00, 'active'),
-
-('Dr. Rupali Bhatia', 1, 'MBBS', 10, 'REG012', 'Dr. Rupali Bhatia is dedicated to guiding mothers towards safe and empowering normal deliveries.', '078598 40839', 'dummy', 'dummy', 'drrupalinhatia.jpg', 'Ground Floor, H-17, Sector 7, Rohini, Delhi', 1, 'dr-rupali-bhatia', 1, 5.00, 500.00, 'active'),
-
-('Dr. Vinita Agarwal', 1, 'MBBS, MS (Obstetrics And Gynecology)', 34, 'REG013', 'Dr. Vinita Agarwal is a leading Gynaecologist of Delhi city.', '098913 06105', 'dummy', 'dummy', 'DrVinitaAgarwal.jpg', '353, Pocket 8, Sector 8, Rohini, Delhi', 1, 'dr-vinita-agarwal', 1, 5.00, 500.00, 'active'),
-
-('Dr. Karishma Makhija', 1, 'MBBS, DGO, DNB', 8, 'REG014', 'Dr. Karishma Makhija is a skilled fertility specialist with 8+ years experience.', '092893 02209', 'dummy', 'dummy', 'DrKarishmaMakhija.jpg', 'D-11/152, Sector 8, Rohini, Delhi', 1, 'dr-karishma-makhija', 1, 5.00, 500.00, 'active'),
-
-('Dr. Dhwani Mago', 1, 'DGO, MBBS', 17, 'REG015', 'Dr. Dhwani Mago is a renowned obstetrician, gynaecologist, and infertility specialist.', '082879 01614', 'dummy', 'dummy', 'DrDhwaniMago.jpg', '4, Greater Kailash-1, M Block, New Delhi', 1, 'dr-dhwani-mago', 1, 5.00, 500.00, 'active'),
-
-('Dr. Mamta Goel', 1, 'DNB - Obstetrics & Gynecology, DGO, MBBS', 15, 'REG016', 'Dr. Mamta Goel is a renowned Gynaecologist and Obstetrician with over 15 years experience.', '082879 01614', 'dummy', 'dummy', 'DrMamtaGoel.jpg', '4, Greater Kailash-1, M Block, New Delhi', 1, 'dr-mamta-goel', 1, 5.00, 500.00, 'active');
-
-
-INSERT INTO `pregajourney`.`hospitals` (`id`, `name`, `image`, `timing`, `phone_1`, `website`, `address`, `city_id`, `about`, `area_id`, `status`) VALUES ('18', 'Advance Fertility and Gynecology Centre', 'advancefertility.jpg', 'Mon – Sat: 09:00 AM - 07:00 PM', '098712 50235', 'www.advancefertility.in', '6, Ring Rd, Vikram Vihar, Lajpat Nagar IV, Lajpat Nagar, New Delhi, Delhi 110049', '1', 'At Advance Fertility Clinics, our team of leading infertility specialists in India provides advanced fertility treatments using state-of-the-art equipment and world-class labs. We follow international standards to deliver personalized, ethical, and result-oriented care, helping couples overcome infertility challenges and achieve their dream of parenthood with trust and compassion.', '1', 'active');
-
-
-
-UPDATE `pregajourney`.`doctor_hospital` SET `doctor_id` = '28', `hospital_id` = '3' WHERE (`doctor_id` = '1') and (`hospital_id` = '1');
-INSERT INTO `pregajourney`.`doctor_hospital` (`doctor_id`, `hospital_id`) VALUES ('29', '18');
-
-
-INSERT INTO `pregajourney`.`areas` (`id`, `name`, `city_id`) VALUES ('33', 'Lajpat Nagar', '2');
-
-
-
-
-
-
-
-
-
-CREATE TABLE pregajourney.doctor_specialization (
-    id INT NOT NULL PRIMARY KEY,
-    doctor_id INT NOT NULL,
-    specialization_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-CREATE TABLE pregajourney.doctor_service (
-    id INT NOT NULL PRIMARY KEY,
-    doctor_id INT NOT NULL,
-    service_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-CREATE TABLE pregajourney.doctor_symptom (
-    id INT NOT NULL PRIMARY KEY,
-    doctor_id INT NOT NULL,
-    symptom_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-CREATE TABLE pregajourney.doctor_procedure (
-    id INT NOT NULL PRIMARY KEY,
-    doctor_id INT NOT NULL,
-    procedure_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-CREATE TABLE pregajourney.hospital_specialization (
-    id INT NOT NULL PRIMARY KEY,
-    hospital_id INT NOT NULL,
-    specialization_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-CREATE TABLE pregajourney.hospital_service (
-    id INT NOT NULL PRIMARY KEY,
-    hospital_id INT NOT NULL,
-    service_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-
-CREATE TABLE pregajourney.hospital_symptom (
-    id INT NOT NULL PRIMARY KEY,
-    hospital_id INT NOT NULL,
-    symptom_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-
-CREATE TABLE pregajourney.hospital_procedure (
-    id INT NOT NULL PRIMARY KEY,
-    hospital_id INT NOT NULL,
-    procedure_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-CREATE TABLE pregajourney.clinic_specialization (
-    id INT NOT NULL PRIMARY KEY,
-    clinic_id INT NOT NULL,
-    specialization_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-CREATE TABLE pregajourney.clinic_service (
-    id INT NOT NULL PRIMARY KEY,
-    clinic_id INT NOT NULL,
-    service_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-CREATE TABLE pregajourney.clinic_symptom (
-    id INT NOT NULL PRIMARY KEY,
-    clinic_id INT NOT NULL,
-    symptom_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-CREATE TABLE pregajourney.clinic_procedure (
-    id INT NOT NULL PRIMARY KEY,
-    clinic_id INT NOT NULL,
-    procedure_id INT NOT NULL,
-    created_at VARCHAR(255),
-    created_by VARCHAR(255),
-    updated_at VARCHAR(255),
-    updated_by VARCHAR(255),
-    deleted_at VARCHAR(255),
-    deleted_by VARCHAR(255)
-);
-
-
-ALTER TABLE doctor_specialization MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE doctor_service MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE doctor_symptom MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE doctor_procedure MODIFY id INT NOT NULL AUTO_INCREMENT;
-
-ALTER TABLE hospital_specialization MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE hospital_service MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE hospital_symptom MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE hospital_procedure MODIFY id INT NOT NULL AUTO_INCREMENT;
-
-ALTER TABLE clinic_specialization MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE clinic_service MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE clinic_symptom MODIFY id INT NOT NULL AUTO_INCREMENT;
-ALTER TABLE clinic_procedure MODIFY id INT NOT NULL AUTO_INCREMENT;
+ALTER TABLE doctors
+ADD COLUMN doctor_college VARCHAR(255) NULL,
+ADD COLUMN pass_year YEAR NULL,
+ADD COLUMN doctor_council VARCHAR(255) NULL,
+ADD COLUMN doctor_council_year YEAR NULL;

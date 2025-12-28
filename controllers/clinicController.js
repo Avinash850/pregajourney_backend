@@ -8,8 +8,29 @@ import deleteFromS3 from "../helpers/deleteFromS3.js";
  */
 export const getClinics = async (req, res) => {
   try {
+    const { from_date, to_date } = req.query;
+
+    const where = [];
+    const params = [];
+
+    /* ---------------- SOFT DELETE FILTER ---------------- */
+    where.push(`deleted_at IS NULL`);
+
+    /* ---------------- DATE FILTER ---------------- */
+    if (from_date && to_date) {
+      where.push(`created_at BETWEEN ? AND ?`);
+      params.push(
+        `${from_date} 00:00:00`,
+        `${to_date} 23:59:59`
+      );
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    /* ---------------- MAIN QUERY ---------------- */
     const [clinics] = await pool.query(
-      `SELECT * FROM clinics ORDER BY id DESC`
+      `SELECT * FROM clinics ${whereSql} ORDER BY id DESC`,
+      params
     );
 
     if (!clinics || clinics.length === 0) {
@@ -18,27 +39,43 @@ export const getClinics = async (req, res) => {
 
     const ids = clinics.map(c => c.id);
 
+    /* ---------------- RELATIONS ---------------- */
     const [specializations] = await pool.query(
-      `SELECT clinic_id, specialization_id AS id FROM clinic_specialization WHERE clinic_id IN (?)`,
-      [ids]
-    );
-    const [services] = await pool.query(
-      `SELECT clinic_id, service_id AS id FROM clinic_service WHERE clinic_id IN (?)`,
-      [ids]
-    );
-    const [procedures] = await pool.query(
-      `SELECT clinic_id, procedure_id AS id FROM clinic_procedure WHERE clinic_id IN (?)`,
-      [ids]
-    );
-    const [symptoms] = await pool.query(
-      `SELECT clinic_id, symptom_id AS id FROM clinic_symptom WHERE clinic_id IN (?)`,
-      [ids]
-    );
-    const [doctors] = await pool.query(
-      `SELECT clinic_id, doctor_id AS id FROM doctor_clinic WHERE clinic_id IN (?)`,
+      `SELECT clinic_id, specialization_id AS id
+       FROM clinic_specialization
+       WHERE clinic_id IN (?)`,
       [ids]
     );
 
+    const [services] = await pool.query(
+      `SELECT clinic_id, service_id AS id
+       FROM clinic_service
+       WHERE clinic_id IN (?)`,
+      [ids]
+    );
+
+    const [procedures] = await pool.query(
+      `SELECT clinic_id, procedure_id AS id
+       FROM clinic_procedure
+       WHERE clinic_id IN (?)`,
+      [ids]
+    );
+
+    const [symptoms] = await pool.query(
+      `SELECT clinic_id, symptom_id AS id
+       FROM clinic_symptom
+       WHERE clinic_id IN (?)`,
+      [ids]
+    );
+
+    const [doctors] = await pool.query(
+      `SELECT clinic_id, doctor_id AS id
+       FROM doctor_clinic
+       WHERE clinic_id IN (?)`,
+      [ids]
+    );
+
+    /* ---------------- FINAL RESPONSE ---------------- */
     const response = clinics.map(c => ({
       ...c,
       specializations: specializations.filter(x => x.clinic_id === c.id).map(x => x.id),
@@ -49,11 +86,13 @@ export const getClinics = async (req, res) => {
     }));
 
     res.json(response);
+
   } catch (err) {
     console.error("❌ getClinics Error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
+
 
 /**
  * GET /api/clinics/:id
@@ -292,7 +331,7 @@ export const createClinic = async (req, res) => {
 
     const body = req.body || {};
 
-    /* ------------------ SLUG ------------------ */
+    /* ------------------ SLUG (UNCHANGED) ------------------ */
     const baseSlug = body.name
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, "")
@@ -328,12 +367,17 @@ export const createClinic = async (req, res) => {
     /* ------------------ INSERT CLINIC ------------------ */
     const [result] = await pool.query(
       `INSERT INTO clinics
-       (name, slug, timing, short_description, about,
+       (
+        name, slug, timing, short_description, about,
         image_url, image_key,
         phone_1, phone_2, website, address,
         city_id, area_id, status,
-        seo_title, seo_keywords, seo_description, json_schema)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        seo_title, seo_keywords, seo_description, json_schema,
+
+        rating, patients_count, patients_stories,
+        is_profile_claimed, payment_type, created_by
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.name || "",
         slug,
@@ -353,6 +397,13 @@ export const createClinic = async (req, res) => {
         body.seo_keywords || null,
         body.seo_description || null,
         body.json_schema || null,
+
+        body.rating ? Number(body.rating) : 0,
+        body.patients_count ? Number(body.patients_count) : 0,
+        body.patients_stories ? Number(body.patients_stories) : 0,
+        body.is_profile_claimed ? 1 : 0,
+        body.payment_type ? Number(body.payment_type) : 0,
+        req.user?.id || "admin"
       ]
     );
 
@@ -629,7 +680,7 @@ export const updateClinic = async (req, res) => {
 
     const body = req.body || {};
 
-    /* ------------------ SLUG ------------------ */
+    /* ------------------ SLUG (UNCHANGED) ------------------ */
     let slug = existing.slug;
     if (body.name && body.name !== existing.name) {
       const baseSlug = body.name
@@ -666,7 +717,10 @@ export const updateClinic = async (req, res) => {
         timing = ?, short_description = ?, about = ?,
         phone_1 = ?, phone_2 = ?, website = ?, address = ?,
         city_id = ?, area_id = ?, status = ?,
-        seo_title = ?, seo_keywords = ?, seo_description = ?, json_schema = ?
+        seo_title = ?, seo_keywords = ?, seo_description = ?, json_schema = ?,
+
+        rating = ?, patients_count = ?, patients_stories = ?,
+        is_profile_claimed = ?, payment_type = ?
         ${imageUrl ? ", image_url = ?, image_key = ?" : ""}
        WHERE id = ?`,
       [
@@ -686,6 +740,13 @@ export const updateClinic = async (req, res) => {
         body.seo_keywords || null,
         body.seo_description || null,
         body.json_schema || null,
+
+        body.rating ? Number(body.rating) : 0,
+        body.patients_count ? Number(body.patients_count) : 0,
+        body.patients_stories ? Number(body.patients_stories) : 0,
+        body.is_profile_claimed ? 1 : 0,
+        body.payment_type ? Number(body.payment_type) : 0,
+
         ...(imageUrl ? [imageUrl, newImageKey] : []),
         id,
       ]
@@ -814,6 +875,7 @@ export const updateClinic = async (req, res) => {
 
 
 
+
 /**
  * DELETE /api/clinics/:id
  */
@@ -821,19 +883,42 @@ export const deleteClinic = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const [[clinic]] = await pool.query(`SELECT image_key FROM clinics WHERE id = ?`, [id]);
-    if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+    const [[clinic]] = await pool.query(
+      `SELECT image_key FROM clinics WHERE id = ?`,
+      [id]
+    );
 
-    const imageKey = clinic.image_key;
+    if (!clinic) {
+      return res.status(404).json({ error: "Clinic not found" });
+    }
 
-    // Delete relations
-    const tables = ["clinic_specialization", "clinic_service", "clinic_procedure", "clinic_symptom", "doctor_clinic"];
-    for (const t of tables) await pool.query(`DELETE FROM ${t} WHERE clinic_id = ?`, [id]);
+    /* ------------------ DELETE RELATIONS (UNCHANGED) ------------------ */
+    const tables = [
+      "clinic_specialization",
+      "clinic_service",
+      "clinic_procedure",
+      "clinic_symptom",
+      "doctor_clinic"
+    ];
 
-    // Delete clinic
-    await pool.query(`DELETE FROM clinics WHERE id = ?`, [id]);
+    for (const t of tables) {
+      await pool.query(`DELETE FROM ${t} WHERE clinic_id = ?`, [id]);
+    }
 
-    if (imageKey) await deleteFromS3(imageKey);
+    /* ------------------ SOFT DELETE CLINIC ------------------ */
+    await pool.query(
+      `UPDATE clinics SET
+        status = 'inactive',
+        deleted_at = NOW(),
+        deleted_by = ?
+       WHERE id = ?`,
+      [req.user?.id || "admin", id]
+    );
+
+    /* ------------------ OPTIONAL IMAGE CLEANUP ------------------ */
+    if (clinic.image_key) {
+      await deleteFromS3(clinic.image_key);
+    }
 
     res.json({ ok: true });
 
@@ -842,3 +927,4 @@ export const deleteClinic = async (req, res) => {
     res.status(500).json({ error: "Failed to delete clinic" });
   }
 };
+
