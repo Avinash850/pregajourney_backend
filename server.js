@@ -11,6 +11,11 @@ import masterRoutes from "./routes/masterRoutes.js";
 import doctorRoutes from "./routes/doctorRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import clinicRoutes from "./routes/clinicRoutes.js";
+import doctorPageRoutes from "./routes/doctorPageRoutes.js";
+import hospitalPageRoutes from "./routes/hospitalPageRoutes.js";
+import clinicPageRoutes from "./routes/clinicPageRoutes.js";
+import listingPageRoutes from "./routes/listingPageRoutes.js";
+import path from "path";
 import cors from 'cors'
 // import migrationRoutes from "./controllers/migrations/doctorSlugMigration.js";
 // import { migrateDoctorSlugs } from "./controllers/migrations/doctorSlugMigration.js";
@@ -37,7 +42,13 @@ app.use("/api", hospitalRoutes);
 app.use("/api", clinicRoutes);
 // app.use("/api", migrateDoctorSlugs);
 app.use("/api/masters", masterRoutes);
+
+app.use("/", doctorPageRoutes);
+app.use("/", hospitalPageRoutes);
+app.use("/", clinicPageRoutes);
+app.use("/", listingPageRoutes);
 app.use("/uploads", express.static("uploads"));
+app.use(express.static(path.resolve("frontend/dist")));
 
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);

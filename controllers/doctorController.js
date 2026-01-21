@@ -266,10 +266,14 @@ export const createDoctor = async (req, res) => {
         gender,
         patients_count,
         is_profile_claimed,
+        doctor_college,
+        pass_year,
+        doctor_council,
+        doctor_council_year,
         created_at,
         created_by
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.name,
         body.designation || null,
@@ -294,10 +298,14 @@ export const createDoctor = async (req, res) => {
         body.degree || null,
         body.experience_years ? Number(body.experience_years) : 0,
         body.gender || "male",
-        body.patients_count ? Number(body.patients_count) : 0, // TEMP: admin controlled
+        body.patients_count ? Number(body.patients_count) : 0,
         body.is_profile_claimed ? 1 : 0,
-        new Date(),        // ✅ created_at
-        "admin",    
+        body.doctor_college || null,
+        body.pass_year || null,
+        body.doctor_council || null,
+        body.doctor_council_year || null,
+        new Date(),
+        "admin",
       ]
     );
 
@@ -463,6 +471,10 @@ export const updateDoctor = async (req, res) => {
         gender = ?,
         patients_count = ?,
         is_profile_claimed = ?,
+        doctor_college = ?,
+        pass_year = ?,
+        doctor_council = ?,
+        doctor_council_year = ?,
         updated_at = ?,
         updated_by = ?
         ${newImageUrl ? ", image_url = ?, image_key = ?" : ""}
@@ -491,6 +503,10 @@ export const updateDoctor = async (req, res) => {
         body.gender || "male",
         body.patients_count ? Number(body.patients_count) : 0, // TEMP
         body.is_profile_claimed ? 1 : 0,
+        body.doctor_college ?? null,
+        body.pass_year ?? null,
+        body.doctor_council ?? null,
+        body.doctor_council_year ?? null,
         new Date(),
         'admin',
         ...(newImageUrl ? [newImageUrl, newImageKey] : []),

@@ -1,4 +1,6 @@
 import pool from "../db.js";
+import { generateDoctorSEO } from "../seo/doctorSeo.js";
+
 
 
 export const search = async (req, res) => {
@@ -429,7 +431,7 @@ export const getSearchDetails = async (req, res) => {
       /* ===== SERVICES (EXISTING, DO NOT TOUCH) ===== */
       item.services = await getServicesByType(type, item.id);
 
-      /* ===== DOCTOR: ALL SPECIALIZATIONS (ALREADY DONE) ===== */
+      /* ===== DOCTOR: ALL SPECIALIZATIONS ===== */
       if (type === "doctor") {
         const [specRows] = await pool.query(
           `
@@ -446,7 +448,7 @@ export const getSearchDetails = async (req, res) => {
         item.specializations = specRows;
       }
 
-      /* ===== HOSPITAL: PROCEDURES (NEW) ===== */
+      /* ===== HOSPITAL: PROCEDURES ===== */
       if (type === "hospital") {
         const [procedureRows] = await pool.query(
           `
@@ -463,7 +465,7 @@ export const getSearchDetails = async (req, res) => {
         item.procedures = procedureRows;
       }
 
-      /* ===== HOSPITAL: SPECIALIZATIONS / SPECIALISTS (NEW) ===== */
+      /* ===== HOSPITAL: SPECIALIZATIONS ===== */
       if (type === "hospital") {
         const [specRows] = await pool.query(
           `
@@ -519,7 +521,7 @@ export const getSearchDetails = async (req, res) => {
         item.hospitals = hospitalRows;
       }
 
-      /* ===== HOSPITAL → DOCTORS (EXISTING) ===== */
+      /* ===== HOSPITAL → DOCTORS ===== */
       if (type === "hospital") {
         const [doctorRows] = await pool.query(
           `
@@ -553,8 +555,15 @@ export const getSearchDetails = async (req, res) => {
         item.doctors = doctorRows;
       }
 
+      /* ===== SEO (ONLY ADDITION) ===== */
+      let seo = null;
+      if (type === "doctor") {
+        seo = generateDoctorSEO(item);
+      }
+
       return res.json({
         type,
+        seo, // ✅ ADDED
         items: [item],
         meta: { single: true, count: 1 },
       });
