@@ -873,7 +873,6 @@ export const searchByIntent = async (req, res) => {
           WHERE dh.hospital_id = ?
             AND d.status = 'active'
           ORDER BY d.rating DESC
-          LIMIT 3
           `,
           [h.id]
         );
