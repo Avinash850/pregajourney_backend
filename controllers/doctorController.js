@@ -206,6 +206,15 @@ export const getDoctorById = async (req, res) => {
 };
 
 
+const normalizeInt = (v) => {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+};
+
+
+
+
 /* =====================================================
    CREATE DOCTOR
    ===================================================== */
@@ -274,7 +283,7 @@ export const createDoctor = async (req, res) => {
         created_by
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+     [
         body.name,
         body.designation || null,
         body.short_description || null,
@@ -285,25 +294,25 @@ export const createDoctor = async (req, res) => {
         body.json_schema || null,
         imageUrl,
         imageKey,
-        body.city_id ? Number(body.city_id) : null,
-        body.area_id ? Number(body.area_id) : null,
+        normalizeInt(body.city_id),
+        normalizeInt(body.area_id),
         body.status || "active",
-        body.consultation_fee ? Number(body.consultation_fee) : 0,
-        body.rating ? Number(body.rating) : 0,
+        normalizeInt(body.consultation_fee),
+        normalizeInt(body.rating),
         body.phone_1 || null,
         body.phone_2 || null,
         body.email || null,
         body.address || null,
         body.registration_number || null,
         body.degree || null,
-        body.experience_years ? Number(body.experience_years) : 0,
+        normalizeInt(body.experience_years),
         body.gender || "male",
-        body.patients_count ? Number(body.patients_count) : 0,
+        normalizeInt(body.patients_count),
         body.is_profile_claimed ? 1 : 0,
         body.doctor_college || null,
-        body.pass_year || null,
+        normalizeInt(body.pass_year),
         body.doctor_council || null,
-        body.doctor_council_year || null,
+        normalizeInt(body.doctor_council_year),
         new Date(),
         "admin",
       ]
@@ -479,7 +488,7 @@ export const updateDoctor = async (req, res) => {
         updated_by = ?
         ${newImageUrl ? ", image_url = ?, image_key = ?" : ""}
       WHERE id = ?`,
-      [
+     [
         body.name || existing.name,
         body.designation ?? null,
         body.short_description ?? null,
@@ -488,27 +497,27 @@ export const updateDoctor = async (req, res) => {
         body.seo_keywords ?? null,
         body.seo_description ?? null,
         body.json_schema ?? null,
-        body.city_id ? Number(body.city_id) : null,
-        body.area_id ? Number(body.area_id) : null,
+        normalizeInt(body.city_id),
+        normalizeInt(body.area_id),
         body.status || "active",
-        body.consultation_fee ? Number(body.consultation_fee) : 0,
-        body.rating ? Number(body.rating) : 0,
+        normalizeInt(body.consultation_fee),
+        normalizeInt(body.rating),
         body.phone_1 ?? null,
         body.phone_2 ?? null,
         body.email ?? null,
         body.address ?? null,
         body.registration_number ?? null,
         body.degree ?? null,
-        body.experience_years ? Number(body.experience_years) : 0,
+        normalizeInt(body.experience_years),
         body.gender || "male",
-        body.patients_count ? Number(body.patients_count) : 0, // TEMP
+        normalizeInt(body.patients_count),
         body.is_profile_claimed ? 1 : 0,
         body.doctor_college ?? null,
-        body.pass_year ?? null,
+        normalizeInt(body.pass_year),
         body.doctor_council ?? null,
-        body.doctor_council_year ?? null,
+        normalizeInt(body.doctor_council_year),
         new Date(),
-        'admin',
+        "admin",
         ...(newImageUrl ? [newImageUrl, newImageKey] : []),
         id,
       ]
