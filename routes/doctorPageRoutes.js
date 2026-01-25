@@ -12,9 +12,8 @@ const router = express.Router();
  */
 router.get("/:city/doctor/:slug", async (req, res) => {
   try {
-    const { city, slug } = req.params;
+    const { slug } = req.params;
 
-    // 1️⃣ Fetch doctor
     const [rows] = await pool.query(
       `
       SELECT d.*, c.name AS city_name
@@ -32,17 +31,12 @@ router.get("/:city/doctor/:slug", async (req, res) => {
 
     const doctor = rows[0];
 
-    // 2️⃣ Generate SEO
     const seo = generateDoctorSEO(doctor);
-
-    // 3️⃣ Build SEO tags
     const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
     const seoTags = buildSeoTags(seo, fullUrl);
 
-    // 4️⃣ Render HTML
     const html = renderHtml(seoTags);
 
-    // 5️⃣ Send HTML
     res.setHeader("Content-Type", "text/html");
     return res.send(html);
 

@@ -43,12 +43,22 @@ app.use("/api", clinicRoutes);
 // app.use("/api", migrateDoctorSlugs);
 app.use("/api/masters", masterRoutes);
 
-app.use("/", doctorPageRoutes);
-app.use("/", hospitalPageRoutes);
-app.use("/", clinicPageRoutes);
-app.use("/", listingPageRoutes);
+// =====================
+// 2️⃣ SEO PAGE ROUTES (VERY IMPORTANT)
+// =====================
+app.use("/", listingPageRoutes); 
+app.use("/:city/doctor", doctorPageRoutes);
+app.use("/:city/hospital", hospitalPageRoutes);
+app.use("/:city/clinic", clinicPageRoutes);
+
+
 app.use("/uploads", express.static("uploads"));
 app.use(express.static(path.resolve("frontend/dist")));
+
+app.use((req, res) => {
+  res.sendFile(path.resolve("frontend/dist/index.html"));
+});
+
 
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
