@@ -46,17 +46,25 @@ app.use("/api/masters", masterRoutes);
 // =====================
 // 2️⃣ SEO PAGE ROUTES (VERY IMPORTANT)
 // =====================
-app.use("/", listingPageRoutes); 
-app.use("/:city/doctor", doctorPageRoutes);
-app.use("/:city/hospital", hospitalPageRoutes);
-app.use("/:city/clinic", clinicPageRoutes);
+app.use("/", listingPageRoutes);
+app.use("/", doctorPageRoutes);
+app.use("/", hospitalPageRoutes);
+app.use("/", clinicPageRoutes);
 
 
 app.use("/uploads", express.static("uploads"));
-app.use(express.static(path.resolve("frontend/dist")));
+
+// app.use(express.static(path.resolve("frontend/dist")));
+
+// app.use((req, res) => {
+//   res.sendFile(path.resolve("frontend/dist/index.html"));
+// });
+
+app.use("/assets", express.static("/var/www/pregajourney/frontend/assets"));
+app.use(express.static("/var/www/pregajourney/frontend"));
 
 app.use((req, res) => {
-  res.sendFile(path.resolve("frontend/dist/index.html"));
+  res.sendFile("/var/www/pregajourney/frontend/index.html");
 });
 
 

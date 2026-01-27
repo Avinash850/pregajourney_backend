@@ -6,8 +6,21 @@ import { renderHtml } from "../utils/renderHtml.js";
 
 const router = express.Router();
 
+// ✅ Bot detection
+const isBot = (req) => {
+  const ua = (req.headers["user-agent"] || "").toLowerCase();
+  return (
+    ua.includes("googlebot") ||
+    ua.includes("bingbot") ||
+    ua.includes("facebookexternalhit") ||
+    ua.includes("twitterbot") ||
+    ua.includes("whatsapp") ||
+    ua.includes("linkedinbot")
+  );
+};
+
 /**
- * DOCTOR PROFILE PAGE (SEO HTML)
+ * DOCTOR PROFILE PAGE
  * URL: /:city/doctor/:slug
  */
 router.get("/:city/doctor/:slug", async (req, res) => {
@@ -35,13 +48,23 @@ router.get("/:city/doctor/:slug", async (req, res) => {
     const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
     const seoTags = buildSeoTags(seo, fullUrl);
 
-    const html = renderHtml(seoTags);
+    // 🟢 BOT → send SEO HTML
+    if (isBot(req)) {
+      const html = renderHtml(seoTags);
+      res.setHeader("Content-Type", "text/html");
+      return res.send(html);
+    }
 
-    res.setHeader("Content-Type", "text/html");
-    return res.send(html);
+    // 🟢 USER → redirect to React frontend
+    const frontendUrl =
+      process.env.NODE_ENV === "production"
+        ? `https://pregajourney.com${req.originalUrl}`
+        : `http://localhost:5173${req.originalUrl}`;
+
+    return res.redirect(302, frontendUrl);
 
   } catch (err) {
-    console.error("❌ Doctor page SEO error:", err);
+    console.error("❌ Doctor page error:", err);
     return res.status(500).send("Server error");
   }
 });
