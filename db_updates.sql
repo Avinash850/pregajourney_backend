@@ -1,2 +1,6 @@
-INSERT INTO `pregajourney`.`services` (`id`, `name`, `slug`) VALUES ('47', 'ICSI (Female Infertility)', 'icsi-female-infertility');
-INSERT INTO `pregajourney`.`services` (`id`, `name`, `slug`) VALUES ('48', 'Ectopic Pregnancy', 'ectopic-pregnancy');
+ALTER TABLE hospitals
+ADD COLUMN show_call_button TINYINT(1) DEFAULT 0;
+
+
+ALTER TABLE clinics
+ADD COLUMN show_call_button TINYINT(1) DEFAULT 0;

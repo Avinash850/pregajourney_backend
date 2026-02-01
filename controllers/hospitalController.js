@@ -217,9 +217,9 @@ export const createHospital = async (req, res) => {
 
         designation, payment_type,
         rating, patients_count, patients_stories,
-        is_profile_claimed, created_by
+        is_profile_claimed,show_call_button, created_by
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.name || "",
         slug,
@@ -245,6 +245,7 @@ export const createHospital = async (req, res) => {
         body.patients_count ? Number(body.patients_count) : 0,
         body.patients_stories ? Number(body.patients_stories) : 0,
         body.is_profile_claimed ? 1 : 0,
+        body.show_call_button ? 1 : 0,
         req.user?.id || "admin"
       ]
     );
@@ -339,7 +340,8 @@ export const updateHospital = async (req, res) => {
         rating = ?,
         patients_count = ?,
         patients_stories = ?,
-        is_profile_claimed = ?
+        is_profile_claimed = ?,
+        show_call_button = ?
 
         ${imageUrl ? ", image_url = ?, image_key = ?" : ""}
       WHERE id = ?
@@ -367,7 +369,14 @@ export const updateHospital = async (req, res) => {
       body.rating ? Number(body.rating) : 0,
       body.patients_count ? Number(body.patients_count) : 0,
       body.patients_stories ? Number(body.patients_stories) : 0,
-      body.is_profile_claimed ? 1 : 0,
+      body.is_profile_claimed !== undefined
+        ? Number(body.is_profile_claimed)
+        : existing.is_profile_claimed,
+
+      body.show_call_button !== undefined
+        ? Number(body.show_call_button)
+        : existing.show_call_button,
+
 
       ...(imageUrl ? [imageUrl, newImageKey] : []),
       id
