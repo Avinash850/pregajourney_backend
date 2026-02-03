@@ -11,10 +11,10 @@ import masterRoutes from "./routes/masterRoutes.js";
 import doctorRoutes from "./routes/doctorRoutes.js";
 import hospitalRoutes from "./routes/hospitalRoutes.js";
 import clinicRoutes from "./routes/clinicRoutes.js";
-import doctorPageRoutes from "./routes/doctorPageRoutes.js";
-import hospitalPageRoutes from "./routes/hospitalPageRoutes.js";
-import clinicPageRoutes from "./routes/clinicPageRoutes.js";
-import listingPageRoutes from "./routes/listingPageRoutes.js";
+// import doctorPageRoutes from "./routes/doctorPageRoutes.js";
+// import hospitalPageRoutes from "./routes/hospitalPageRoutes.js";
+// import clinicPageRoutes from "./routes/clinicPageRoutes.js";
+// import listingPageRoutes from "./routes/listingPageRoutes.js";
 import path from "path";
 import cors from 'cors'
 // import migrationRoutes from "./controllers/migrations/doctorSlugMigration.js";
@@ -46,10 +46,10 @@ app.use("/api/masters", masterRoutes);
 // =====================
 // 2️⃣ SEO PAGE ROUTES (VERY IMPORTANT)
 // =====================
-app.use("/", listingPageRoutes);
-app.use("/", doctorPageRoutes);
-app.use("/", hospitalPageRoutes);
-app.use("/", clinicPageRoutes);
+// app.use("/", listingPageRoutes);
+// app.use("/", doctorPageRoutes);
+// app.use("/", hospitalPageRoutes);
+// app.use("/", clinicPageRoutes);
 
 
 app.use("/uploads", express.static("uploads"));
