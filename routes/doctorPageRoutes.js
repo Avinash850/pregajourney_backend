@@ -1,8 +1,8 @@
 import express from "express";
 import pool from "../db.js";
-import { generateDoctorSEO } from "../seo/doctorSeo.js";
-import { buildSeoTags } from "../seo/buildSeoTags.js";
-import { renderHtml } from "../utils/renderHtml.js";
+// import { generateDoctorSEO } from "../seo/doctorSeo.js";
+// import { buildSeoTags } from "../seo/buildSeoTags.js";
+// import { renderHtml } from "../utils/renderHtml.js";
 
 const router = express.Router();
 

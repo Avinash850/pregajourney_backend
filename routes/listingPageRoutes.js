@@ -1,7 +1,7 @@
 import express from "express";
-import { generateListingSEO } from "../seo/listingSeo.js";
-import { buildSeoTags } from "../seo/buildSeoTags.js";
-import { renderHtml } from "../utils/renderHtml.js";
+// import { generateListingSEO } from "../seo/listingSeo.js";
+// import { buildSeoTags } from "../seo/buildSeoTags.js";
+// import { renderHtml } from "../utils/renderHtml.js";
 
 const router = express.Router();
 
