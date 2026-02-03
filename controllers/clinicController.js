@@ -177,146 +177,6 @@ export const getClinicById = async (req, res) => {
 };
 
 
-// export const createClinic = async (req, res) => {
-//   let imageKey = null;
-
-//   try {
-//     /* ------------------ IMAGE ------------------ */
-//     let imageUrl = null;
-//     if (req.file) {
-//       const uploaded = await uploadImageToS3(req.file, "clinics");
-//       imageUrl = uploaded.imageUrl;
-//       imageKey = uploaded.fileKey;
-//     }
-
-//     const body = req.body || {};
-
-//     /* ------------------ SLUG ------------------ */
-//     const baseSlug = body.name
-//       .toLowerCase()
-//       .replace(/[^a-z0-9\s-]/g, "")
-//       .trim()
-//       .replace(/\s+/g, "-");
-
-//     let slug = baseSlug;
-//     let counter = 1;
-
-//     while (true) {
-//       const [[exists]] = await pool.query(
-//         `SELECT id FROM clinics WHERE slug = ? LIMIT 1`,
-//         [slug]
-//       );
-//       if (!exists) break;
-//       slug = `${baseSlug}-${counter++}`;
-//     }
-
-//     /* ------------------ NORMALIZE ------------------ */
-//     const normalize = (v) => {
-//       if (!v) return [];
-//       if (Array.isArray(v)) return v.map(Number).filter(Boolean);
-//       if (typeof v === "string")
-//         return v.split(",").map(x => Number(x.trim())).filter(Boolean);
-//       return [];
-//     };
-
-//     const specializations = normalize(body.specializations);
-//     const services = normalize(body.services);
-//     const procedures = normalize(body.procedures);
-//     const symptoms = normalize(body.symptoms);
-//     const doctors = normalize(body.doctors);
-
-//     /* ------------------ INSERT CLINIC ------------------ */
-//     const [result] = await pool.query(
-//       `INSERT INTO clinics
-//        (name, slug, timing, short_description, about,
-//         image_url, image_key,
-//         phone_1, phone_2, website, address,
-//         city_id, area_id, status,
-//         seo_title, seo_keywords, seo_description, json_schema)
-//        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-//       [
-//         body.name || "",
-//         slug,
-//         body.timing || null,
-//         body.short_description || null,
-//         body.about || null,
-//         imageUrl,
-//         imageKey,
-//         body.phone_1 || null,
-//         body.phone_2 || null,
-//         body.website || null,
-//         body.address || null,
-//         body.city_id ? Number(body.city_id) : null,
-//         body.area_id ? Number(body.area_id) : null,
-//         body.status || "active",
-//         body.seo_title || null,
-//         body.seo_keywords || null,
-//         body.seo_description || null,
-//         body.json_schema || null,
-//       ]
-//     );
-
-//     const clinicId = result.insertId;
-
-//     /* ------------------ SPECIALIZATIONS ------------------ */
-//     if (specializations.length) {
-//       const values = specializations.map((sid, idx) => [
-//         clinicId,
-//         sid,
-//         idx === 0 ? 1 : 0
-//       ]);
-
-//       await pool.query(
-//         `INSERT INTO clinic_specialization
-//          (clinic_id, specialization_id, is_primary)
-//          VALUES ?`,
-//         [values]
-//       );
-//     }
-
-//     /* ------------------ OTHER RELATIONS ------------------ */
-//     const insertMany = async (table, col, ids) => {
-//       if (!ids.length) return;
-//       const rows = ids.map(x => [clinicId, x]);
-//       await pool.query(
-//         `INSERT INTO ${table} (clinic_id, ${col}) VALUES ?`,
-//         [rows]
-//       );
-//     };
-
-//     await insertMany("clinic_service", "service_id", services);
-//     await insertMany("clinic_procedure", "procedure_id", procedures);
-//     await insertMany("clinic_symptom", "symptom_id", symptoms);
-
-//     /* ------------------ DOCTOR ↔ CLINIC ------------------ */
-//     if (doctors.length) {
-//       const values = doctors.map((did, idx) => [
-//         did,
-//         clinicId,
-//         idx === 0 ? 1 : 0,
-//         body.consultation_fee || null,
-//         null,
-//         null,
-//       ]);
-
-//       await pool.query(
-//         `INSERT INTO doctor_clinic
-//          (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
-//          VALUES ?`,
-//         [values]
-//       );
-//     }
-
-//     res.status(201).json({ id: clinicId, slug });
-
-//   } catch (err) {
-//     console.error("❌ createClinic Error:", err);
-//     if (imageKey) await deleteFromS3(imageKey);
-//     res.status(500).json({ error: "Failed to create clinic" });
-//   }
-// };
-
-
 export const createClinic = async (req, res) => {
   let imageKey = null;
 
@@ -491,176 +351,6 @@ export const createClinic = async (req, res) => {
     res.status(500).json({ error: "Failed to create clinic" });
   }
 };
-
-
-
-
-/**
- * PUT /api/clinics/:id
- * Update clinic
- */
-// export const updateClinic = async (req, res) => {
-//   const { id } = req.params;
-//   let newImageKey = null;
-
-//   try {
-//     const [[existing]] = await pool.query(
-//       `SELECT name, slug, image_key FROM clinics WHERE id = ?`,
-//       [id]
-//     );
-
-//     if (!existing) {
-//       return res.status(404).json({ error: "Clinic not found" });
-//     }
-
-//     const body = req.body || {};
-
-//     /* ------------------ SLUG ------------------ */
-//     let slug = existing.slug;
-//     if (body.name && body.name !== existing.name) {
-//       const baseSlug = body.name
-//         .toLowerCase()
-//         .replace(/[^a-z0-9\s-]/g, "")
-//         .trim()
-//         .replace(/\s+/g, "-");
-
-//       slug = baseSlug;
-//       let counter = 1;
-
-//       while (true) {
-//         const [[exists]] = await pool.query(
-//           `SELECT id FROM clinics WHERE slug = ? AND id != ? LIMIT 1`,
-//           [slug, id]
-//         );
-//         if (!exists) break;
-//         slug = `${baseSlug}-${counter++}`;
-//       }
-//     }
-
-//     /* ------------------ IMAGE ------------------ */
-//     let imageUrl = null;
-//     if (req.file) {
-//       const uploaded = await uploadImageToS3(req.file, "clinics");
-//       imageUrl = uploaded.imageUrl;
-//       newImageKey = uploaded.fileKey;
-//     }
-
-//     /* ------------------ UPDATE CLINIC ------------------ */
-//     await pool.query(
-//       `UPDATE clinics SET
-//         name = ?, slug = ?,
-//         timing = ?, short_description = ?, about = ?,
-//         phone_1 = ?, phone_2 = ?, website = ?, address = ?,
-//         city_id = ?, area_id = ?, status = ?,
-//         seo_title = ?, seo_keywords = ?, seo_description = ?, json_schema = ?
-//         ${imageUrl ? ", image_url = ?, image_key = ?" : ""}
-//        WHERE id = ?`,
-//       [
-//         body.name || existing.name,
-//         slug,
-//         body.timing || null,
-//         body.short_description || null,
-//         body.about || null,
-//         body.phone_1 || null,
-//         body.phone_2 || null,
-//         body.website || null,
-//         body.address || null,
-//         body.city_id ? Number(body.city_id) : null,
-//         body.area_id ? Number(body.area_id) : null,
-//         body.status || "active",
-//         body.seo_title || null,
-//         body.seo_keywords || null,
-//         body.seo_description || null,
-//         body.json_schema || null,
-//         ...(imageUrl ? [imageUrl, newImageKey] : []),
-//         id
-//       ]
-//     );
-
-//     /* ------------------ NORMALIZE ------------------ */
-//     const normalize = (v) => {
-//       if (v === undefined) return undefined;
-//       if (!v) return [];
-//       if (Array.isArray(v)) return v.map(Number).filter(Boolean);
-//       if (typeof v === "string")
-//         return v.split(",").map(x => Number(x.trim())).filter(Boolean);
-//       return [];
-//     };
-
-//     /* ------------------ SPECIALIZATIONS ------------------ */
-//     const specializations = normalize(body.specializations);
-//     if (specializations !== undefined) {
-//       await pool.query(`DELETE FROM clinic_specialization WHERE clinic_id = ?`, [id]);
-
-//       if (specializations.length) {
-//         const values = specializations.map((sid, idx) => [
-//           id,
-//           sid,
-//           idx === 0 ? 1 : 0
-//         ]);
-
-//         await pool.query(
-//           `INSERT INTO clinic_specialization
-//            (clinic_id, specialization_id, is_primary)
-//            VALUES ?`,
-//           [values]
-//         );
-//       }
-//     }
-
-//     /* ------------------ OTHER RELATIONS ------------------ */
-//     const replaceRelations = async (table, col, values) => {
-//       if (values === undefined) return;
-//       await pool.query(`DELETE FROM ${table} WHERE clinic_id = ?`, [id]);
-//       if (!values.length) return;
-//       const rows = values.map(v => [id, v]);
-//       await pool.query(
-//         `INSERT INTO ${table} (clinic_id, ${col}) VALUES ?`,
-//         [rows]
-//       );
-//     };
-
-//     await replaceRelations("clinic_service", "service_id", normalize(body.services));
-//     await replaceRelations("clinic_procedure", "procedure_id", normalize(body.procedures));
-//     await replaceRelations("clinic_symptom", "symptom_id", normalize(body.symptoms));
-
-//     /* ------------------ DOCTOR ↔ CLINIC ------------------ */
-//     const doctors = normalize(body.doctors);
-//     if (doctors !== undefined) {
-//       await pool.query(`DELETE FROM doctor_clinic WHERE clinic_id = ?`, [id]);
-
-//       if (doctors.length) {
-//         const rows = doctors.map((did, idx) => [
-//           did,
-//           id,
-//           idx === 0 ? 1 : 0,
-//           body.consultation_fee || null,
-//           null,
-//           null
-//         ]);
-
-//         await pool.query(
-//           `INSERT INTO doctor_clinic
-//            (doctor_id, clinic_id, is_primary, consultation_fee, timings, practice_address)
-//            VALUES ?`,
-//           [rows]
-//         );
-//       }
-//     }
-
-//     /* ------------------ CLEAN OLD IMAGE ------------------ */
-//     if (newImageKey && existing.image_key && existing.image_key !== newImageKey) {
-//       await deleteFromS3(existing.image_key);
-//     }
-
-//     res.json({ ok: true, slug });
-
-//   } catch (err) {
-//     console.error("❌ updateClinic Error:", err);
-//     if (newImageKey) await deleteFromS3(newImageKey);
-//     res.status(500).json({ error: "Failed to update clinic" });
-//   }
-// };
 
 
 
@@ -936,3 +626,106 @@ export const deleteClinic = async (req, res) => {
   }
 };
 
+
+
+/* ======================================
+   GET /api/clinics/:id/images
+   ====================================== */
+export const getClinicImages = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, image_url, sort_order
+       FROM clinic_images
+       WHERE clinic_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+      [id]
+    );
+
+    res.json(rows || []);
+  } catch (err) {
+    console.error("❌ getClinicImages Error:", err);
+    res.status(500).json({ error: "Failed to load clinic images" });
+  }
+};
+
+
+/* ======================================
+   POST /api/clinics/:id/images
+   ====================================== */
+export const uploadClinicImages = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    if (!req.files || !req.files.length) {
+      return res.status(400).json({ error: "No images uploaded" });
+    }
+
+    if (req.files.length > 10) {
+      return res.status(400).json({ error: "Maximum 10 images allowed" });
+    }
+
+    const values = [];
+
+    for (let i = 0; i < req.files.length; i++) {
+      const file = req.files[i];
+
+      if (file.size > 5 * 1024 * 1024) {
+        return res.status(400).json({ error: "Each image must be ≤ 5MB" });
+      }
+
+      const uploaded = await uploadImageToS3(file, "clinic-gallery");
+
+      values.push([
+        id,
+        uploaded.imageUrl,
+        uploaded.fileKey,
+        i,
+        new Date().toISOString(),
+      ]);
+    }
+
+    await pool.query(
+      `INSERT INTO clinic_images
+       (clinic_id, image_url, image_key, sort_order, created_at)
+       VALUES ?`,
+      [values]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ uploadClinicImages Error:", err);
+    res.status(500).json({ error: "Failed to upload images" });
+  }
+};
+
+
+/* ======================================
+   DELETE /api/clinic-images/:id
+   ====================================== */
+export const deleteClinicImage = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [[row]] = await pool.query(
+      `SELECT image_key FROM clinic_images WHERE id = ?`,
+      [id]
+    );
+
+    if (!row) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+
+    await pool.query(`DELETE FROM clinic_images WHERE id = ?`, [id]);
+
+    if (row.image_key) {
+      await deleteFromS3(row.image_key);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ deleteClinicImage Error:", err);
+    res.status(500).json({ error: "Failed to delete image" });
+  }
+};

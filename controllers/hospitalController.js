@@ -503,3 +503,121 @@ export const deleteHospital = async (req, res) => {
   }
 };
 
+
+/* =====================================================
+   GET /api/hospitals/:id/images
+   ===================================================== */
+export const getHospitalImages = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, image_url, sort_order
+       FROM hospital_images
+       WHERE hospital_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+      [id]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ getHospitalImages Error:", err);
+    res.status(500).json({ error: "Failed to load hospital images" });
+  }
+};
+
+
+
+/* =====================================================
+   POST /api/hospitals/:id/images
+   ===================================================== */
+export const uploadHospitalImages = async (req, res) => {
+  const { id } = req.params;
+  const files = req.files || [];
+
+  if (!files.length) {
+    return res.status(400).json({ error: "No images uploaded" });
+  }
+
+  if (files.length > 10) {
+    return res.status(400).json({ error: "Maximum 10 images allowed" });
+  }
+
+  try {
+    // ensure hospital exists
+    const [[hospital]] = await pool.query(
+      `SELECT id FROM hospitals WHERE id = ? AND deleted_at IS NULL`,
+      [id]
+    );
+
+    if (!hospital) {
+      return res.status(404).json({ error: "Hospital not found" });
+    }
+
+    const uploadedRows = [];
+
+    for (const file of files) {
+      // size validation (5 MB)
+      if (file.size > 5 * 1024 * 1024) {
+        return res.status(400).json({
+          error: "Each image must be less than 5 MB"
+        });
+      }
+
+      const uploaded = await uploadImageToS3(file, "hospital-gallery");
+
+      uploadedRows.push([
+        id,
+        uploaded.imageUrl,
+        uploaded.fileKey,
+      ]);
+    }
+
+    await pool.query(
+      `INSERT INTO hospital_images
+       (hospital_id, image_url, image_key)
+       VALUES ?`,
+      [uploadedRows]
+    );
+
+    res.status(201).json({ ok: true });
+
+  } catch (err) {
+    console.error("❌ uploadHospitalImages Error:", err);
+    res.status(500).json({ error: "Failed to upload images" });
+  }
+};
+
+
+/* =====================================================
+   DELETE /api/hospital-images/:imageId
+   ===================================================== */
+export const deleteHospitalImage = async (req, res) => {
+  const { imageId } = req.params;
+
+  try {
+    const [[img]] = await pool.query(
+      `SELECT image_key FROM hospital_images WHERE id = ?`,
+      [imageId]
+    );
+
+    if (!img) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+
+    await pool.query(
+      `DELETE FROM hospital_images WHERE id = ?`,
+      [imageId]
+    );
+
+    if (img.image_key) {
+      await deleteFromS3(img.image_key);
+    }
+
+    res.json({ ok: true });
+
+  } catch (err) {
+    console.error("❌ deleteHospitalImage Error:", err);
+    res.status(500).json({ error: "Failed to delete image" });
+  }
+};
