@@ -60,12 +60,12 @@ app.use("/uploads", express.static("uploads"));
 //   res.sendFile(path.resolve("frontend/dist/index.html"));
 // });
 
-app.use("/assets", express.static("/var/www/pregajourney/frontend/assets"));
-app.use(express.static("/var/www/pregajourney/frontend"));
+// app.use("/assets", express.static("/var/www/pregajourney/frontend/assets"));
+// app.use(express.static("/var/www/pregajourney/frontend"));
 
-app.use((req, res) => {
-  res.sendFile("/var/www/pregajourney/frontend/index.html");
-});
+// app.use((req, res) => {
+//   res.sendFile("/var/www/pregajourney/frontend/index.html");
+// });
 
 
 app.listen(PORT, () => {
